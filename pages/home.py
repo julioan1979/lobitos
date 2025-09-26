@@ -413,8 +413,69 @@ def dashboard_tesoureiro(dados: dict):
 
         st.dataframe(df_rec_limpo, use_container_width=True)
 
+
+
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
+
+    # 🔘 Barra de Ações
+    col1, col2, col3 = st.columns([1,1,6])
+    with col1:
+        if st.button("📝 Novo Registo"):
+            st.session_state["mostrar_form_registo"] = True
+    with col2:
+        if st.button("📋 Novo Pedido"):
+            st.session_state["mostrar_form_pedido"] = True
+
+    # Formulário: Novo Registo
+    if st.session_state.get("mostrar_form_registo", False):
+        with st.container(border=True):
+            col1, col2 = st.columns([8,1])
+            with col1:
+                st.markdown("### 📝 Formulário de Novo Registo")
+            with col2:
+                if st.button("❌", key="fechar_registo"):
+                    st.session_state["mostrar_form_registo"] = False
+                    st.rerun()
+
+            components.html(
+                """
+                <iframe class="airtable-embed"
+                    src="https://airtable.com/embed/appDSu6pj0DJmZSn8/pagsw4PQrv9RaTdJS/form"
+                    frameborder="0" onmousewheel="" width="100%" height="533"
+                    style="background: transparent; border: 1px solid #ccc;">
+                </iframe>
+                """,
+                height=600,
+                scrolling=True
+            )
+
+    # Formulário: Novo Pedido
+    if st.session_state.get("mostrar_form_pedido", False):
+        with st.container(border=True):
+            col1, col2 = st.columns([8,1])
+            with col1:
+                st.markdown("### 📋 Formulário de Novo Pedido")
+            with col2:
+                if st.button("❌", key="fechar_pedido"):
+                    st.session_state["mostrar_form_pedido"] = False
+                    st.rerun()
+
+            components.html(
+                """
+                <iframe class="airtable-embed"
+                    src="https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form"
+                    frameborder="0" onmousewheel="" width="100%" height="533"
+                    style="background: transparent; border: 1px solid #ccc;">
+                </iframe>
+                """,
+                height=600,
+                scrolling=True
+            )
+
+    st.divider()
+
+    # Listagem de tabelas (como já estava)
     for nome, df in dados.items():
         st.subheader(f"📂 {nome} ({len(df)} registos)")
         if df.empty:
