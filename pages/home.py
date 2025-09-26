@@ -1,0 +1,444 @@
+#pages/home.py
+#-*- coding: utf-8 -*-
+import streamlit as st
+import pandas as pd
+from pyairtable import Api
+import toml
+from menu import menu_with_redirect
+import locale
+import time
+from datetime import datetime
+import streamlit.components.v1 as components
+
+import locale
+
+try:
+    locale.setlocale(locale.LC_ALL, "pt_PT.UTF-8")
+except locale.Error:
+    # fallback para não dar erro no Streamlit Cloud
+    locale.setlocale(locale.LC_ALL, "")
+
+
+
+st.set_page_config(page_title="Portal Lobitos", page_icon="🐾", layout="wide")
+
+# ======================
+# 1) Verificar login
+# ======================
+menu_with_redirect()
+role = st.session_state.get("role")
+
+#role = st.selectbox(
+#    "Escolha o tipo de utilizador",
+#    options=["admin", "tesoureiro", "pais"],
+#    index=1  # por defeito tesoureiro
+#)
+
+# ======================
+# 2) Função para carregar dados do Airtable
+# ======================
+if "AIRTABLE_TOKEN" in st.secrets:
+    AIRTABLE_TOKEN = st.secrets["AIRTABLE_TOKEN"]
+    BASE_ID = st.secrets["AIRTABLE_BASE_ID"]
+else:
+    secrets = toml.load(".streamlit/secrets.toml")
+    AIRTABLE_TOKEN = secrets["AIRTABLE_TOKEN"]
+    BASE_ID = secrets["AIRTABLE_BASE_ID"]
+
+api = Api(AIRTABLE_TOKEN)
+
+def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
+    dados = {}
+
+    # Mapear tabelas necessárias por role
+    tabelas_por_role = {
+        "pais": ["Pedidos", "Calendario", "Voluntariado Pais", "Escuteiros"],
+        "tesoureiro": ["Escuteiros", "Recebimento", "Publicar Menu do Scouts"],
+        "admin": None  # admin carrega todas
+    }
+
+    if role == "admin":
+        lista_tabelas = [tbl.name for tbl in api.base(base_id).tables()]
+    else:
+        lista_tabelas = tabelas_por_role.get(role, [])
+
+    for nome in lista_tabelas:
+        try:
+            tbl = api.table(base_id, nome)
+            records = tbl.all(max_records=200)
+            rows = [{"id": r["id"], **r["fields"]} for r in records]
+            dados[nome] = pd.DataFrame(rows)
+            time.sleep(0.25)  # evitar limite 5 requests/s
+        except Exception as e:
+            st.warning(f"⚠️ Não consegui carregar a tabela {nome}: {e}")
+            dados[nome] = pd.DataFrame()
+    return dados
+
+# ======================
+# 3) Cache e botão de refresh
+# ======================
+if "dados_cache" not in st.session_state:
+    st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
+    st.session_state["last_update"] = datetime.now()
+
+if st.button("🔄 Atualizar dados do Airtable"):
+    st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
+    st.session_state["last_update"] = datetime.now()
+    st.success("✅ Dados atualizados com sucesso!")
+
+# Mostrar data/hora da última atualização
+if "last_update" in st.session_state:
+    st.caption(f"🕒 Última atualização: {st.session_state['last_update'].strftime('%d/%m/%Y %H:%M:%S')}")
+
+dados = st.session_state["dados_cache"]
+
+# ======================
+# 4) Dashboards
+# ======================
+def dashboard_pais():
+    st.markdown("## 🏡 Bem-vindos, Famílias Lobitos!")
+    st.info("Aqui podem gerir lanches, voluntariado e acompanhar as atividades.")
+
+    # 🔘 Barra de Ações
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("🍞 Marcar Lanche"):
+            st.session_state["mostrar_form_lanche"] = True
+    with col2:
+        if st.button("❌ Cancelar Lanche"):
+            st.session_state["mostrar_form_cancelar"] = True
+
+    # Formulário Escolha dos Lanches
+    if st.session_state.get("mostrar_form_lanche", False):
+        with st.container(border=True):
+            col1, col2 = st.columns([8,1])
+            with col1:
+                st.markdown("### 🍞 Formulário de Escolha dos Lanches")
+            with col2:
+                if st.button("❌", key="fechar_lanche"):
+                    st.session_state["mostrar_form_lanche"] = False
+                    st.rerun()
+
+            components.html(
+                """
+                <iframe class="airtable-embed"
+                    src="https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
+                    frameborder="0" onmousewheel="" width="100%" height="600"
+                    style="background: transparent; border: 1px solid #ccc;">
+                </iframe>
+                """,
+                height=650,
+                scrolling=True
+            )
+
+    # Formulário Cancelar Lanche
+    if st.session_state.get("mostrar_form_cancelar", False):
+        with st.container(border=True):
+            col1, col2 = st.columns([8,1])
+            with col1:
+                st.markdown("### ❌ Formulário de Cancelamento de Lanche")
+            with col2:
+                if st.button("❌", key="fechar_cancelar"):
+                    st.session_state["mostrar_form_cancelar"] = False
+                    st.rerun()
+
+            components.html(
+                """
+                <iframe class="airtable-embed" src="https://airtable.com/embed/appzwzHD5YUCyIx63/shr5niXN6y71jcFRu" frameborder="0" onmousewheel="" width="100%" height="533" style="background: transparent; border: 1px solid #ccc;"></iframe>
+                """,
+                height=650,
+                scrolling=True
+            )
+
+    st.divider()
+
+    # 📊 Métricas resumidas
+    col1, col2, col3, col4 = st.columns(4)
+    df_pedidos = dados.get("Pedidos", pd.DataFrame())
+    with col1:
+        st.metric("📦 Pedidos registados", len(df_pedidos) if not df_pedidos.empty else 0)
+
+    df_calendario = dados.get("Calendario", pd.DataFrame())
+    with col2:
+        st.metric("📅 Eventos futuros", len(df_calendario) if not df_calendario.empty else 0)
+
+    df_volunt = dados.get("Voluntariado Pais", pd.DataFrame())
+    with col3:
+        st.metric("🙋 Voluntariado marcado", len(df_volunt) if not df_volunt.empty else 0)
+
+    df_cc = dados.get("Escuteiros", pd.DataFrame())
+    with col4:
+        saldo_total = df_cc["Conta Corrente"].fillna(0).sum() if not df_cc.empty else 0
+        st.metric("💰 Saldo Alcateia", f"{saldo_total:.2f} €")
+
+
+
+def dashboard_tesoureiro(dados: dict):
+    st.markdown("## 💰 Dashboard Tesoureiro")
+
+    # 🔘 Barra de Ações
+    col1, col2, col3 = st.columns([1,1,6])
+    with col1:
+        if st.button("➕ Recebimento"):
+            st.session_state["mostrar_form_receb"] = True
+    with col2:
+        if st.button("➖ Estorno"):
+            st.session_state["mostrar_form_estorno"] = True
+
+    
+
+    # Mostrar formulário Recebimento
+    if st.session_state.get("mostrar_form_receb", False):
+        with st.container(border=True):  # dá um quadro visível
+            col1, col2 = st.columns([8,1])  # espaço para botão no canto
+            with col1:
+                st.markdown("### 📋 Formulário de Recebimento")
+            with col2:
+                if st.button("❌", key="fechar_receb"):
+                    st.session_state["mostrar_form_receb"] = False
+                    st.rerun()
+
+            components.html(
+                """
+                <iframe class="airtable-embed"
+                    src="https://airtable.com/embed/appzwzHD5YUCyIx63/shrJKmfQLKx223tjS"
+                    frameborder="0" onmousewheel="" width="100%" height="600"
+                    style="background: transparent; border: 1px solid #ccc;">
+                </iframe>
+                """,
+                height=650,
+                scrolling=True
+            )
+
+
+    # Mostrar formulário Estorno
+    if st.session_state.get("mostrar_form_estorno", False):
+        with st.container(border=True):
+            col1, col2 = st.columns([8,1])
+            with col1:
+                st.markdown("### 📋 Formulário de Estorno")
+            with col2:
+                if st.button("❌", key="fechar_estorno"):
+                    st.session_state["mostrar_form_estorno"] = False
+                    st.rerun()
+
+            components.html(
+                """
+                <iframe class="airtable-embed"
+                    src="https://airtable.com/embed/appzwzHD5YUCyIx63/shrWikw7lhXnZFnL6"
+                    frameborder="0" onmousewheel="" width="100%" height="600"
+                    style="background: transparent; border: 1px solid #ccc;">
+                </iframe>
+                """,
+                height=650,
+                scrolling=True
+            )
+
+
+
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    # Saldo total
+    saldo_total = 0
+    df_tes = dados.get("Escuteiros", pd.DataFrame())
+    if not df_tes.empty and "Conta Corrente" in df_tes.columns:
+        saldo_total = df_tes["Conta Corrente"].fillna(0).sum()
+
+    # Rentabilidade da semana corrente
+    rentabilidade_semana = 0
+    semana_numero = None
+    df_semana = dados.get("Publicar Menu do Scouts", pd.DataFrame())
+    if (
+        not df_semana.empty
+        and "Rentabilidade Semana" in df_semana.columns
+        and "Week Num Menu Publicado" in df_semana.columns
+    ):
+        df_semana["Date (from Marcação dos Pais na preparação do Lanche)"] = pd.to_datetime(
+            df_semana["Date (from Marcação dos Pais na preparação do Lanche)"],
+            errors="coerce"
+        )
+        ano_atual = pd.Timestamp.today().year
+        df_atual = df_semana[
+            df_semana["Date (from Marcação dos Pais na preparação do Lanche)"].dt.year == ano_atual
+        ]
+        if not df_atual.empty:
+            idx = df_atual["Week Num Menu Publicado"].idxmax()
+            rentabilidade_semana = df_atual.loc[idx, "Rentabilidade Semana"]
+            semana_numero = df_atual.loc[idx, "Week Num Menu Publicado"]
+
+    # Nº escuteiros em débito
+    n_escuteiros_debito = 0
+    if not df_tes.empty and "Conta Corrente" in df_tes.columns:
+        n_escuteiros_debito = (df_tes["Conta Corrente"] < 0).sum()
+
+    # Total dívida
+    divida_total = 0
+    if not df_tes.empty and "Conta Corrente" in df_tes.columns:
+        divida_total = df_tes.loc[df_tes["Conta Corrente"] < 0, "Conta Corrente"].sum()
+
+    # Exibir métricas
+    with col1:
+        st.metric("💰 Saldo Total", f"{saldo_total:.2f} €")
+    with col2:
+        if semana_numero:
+            st.metric("📅 Valor Semana", f"{rentabilidade_semana:.2f} €", delta=f"Semana {semana_numero}")
+        else:
+            st.metric("📅 Valor Semana", f"{rentabilidade_semana:.2f} €")
+    with col3:
+        st.metric("👦 Nº Escuteiros Devedores", n_escuteiros_debito)
+    with col4:
+        st.metric("❌ Total em Dívida", f"{divida_total:.2f} €")
+
+    st.divider()
+
+    # Ranking de Escuteiros
+    st.markdown("### 🏆 Ranking de Escuteiros")
+    if not df_tes.empty and "Conta Corrente" in df_tes.columns and "Escuteiro" in df_tes.columns:
+        top_ricos = df_tes.sort_values("Conta Corrente", ascending=False).head(5).copy()
+        df_divida = df_tes[df_tes["Conta Corrente"] < 0].sort_values("Conta Corrente", ascending=True).head(5).copy()
+
+        # formatar como moeda
+        for df_temp in [top_ricos, df_divida]:
+            if not df_temp.empty:
+                df_temp["Conta Corrente"] = pd.to_numeric(df_temp["Conta Corrente"], errors="coerce").map("{:.2f} €".format)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("💎 Top 5 com maior saldo")
+            if not top_ricos.empty:
+                styler_ricos = top_ricos[["Escuteiro", "Conta Corrente"]].style.set_properties(
+                    subset=["Conta Corrente"], **{"text-align": "center"}
+                )
+                st.table(styler_ricos)
+            else:
+                st.info("ℹ️  Nenhum escuteiro com saldo.")
+
+        with col2:
+            st.subheader("🚨 Top 5 em dívida")
+            if not df_divida.empty:
+                styler_divida = df_divida[["Escuteiro", "Conta Corrente"]].style.set_properties(
+                    subset=["Conta Corrente"], **{"text-align": "center"}
+                )
+                st.table(styler_divida)
+            else:
+                st.info("ℹ️ Nenhum escuteiro em dívida.")
+    else:
+        st.info("ℹ️ Não há dados suficientes para ranking.")
+
+    # Conta Corrente
+    st.divider()
+    st.markdown("### 💰 Conta Corrente dos Escuteiros")
+
+    df_cc = dados.get("Escuteiros", pd.DataFrame())
+    if df_cc.empty:
+        st.info("ℹ️ Não há movimentos financeiros registados.")
+    else:
+        # Selecionar e renomear colunas
+        colunas_uteis = [
+            "Nome do Escuteiro", "Numero de Lanches", "Lanches", "Conta Corrente",
+            "Valores recebidos", "Valor Estornado", "Valores doados"
+        ]
+        colunas_existentes = [c for c in colunas_uteis if c in df_cc.columns]
+
+        df_limpo = df_cc[colunas_existentes].rename(columns={
+            "Nome do Escuteiro": "Escuteiro",
+            "Numero de Lanches": "Nº de Lanches",
+            "Lanches": "Valor dos Lanches",
+            "Conta Corrente": "Saldo Conta Corrente",
+            "Valores recebidos": "Recebimentos",
+            "Valor Estornado": "Estornos",
+            "Valores doados": "Doações",
+        })
+
+        # Ordenar colunas na ordem correta
+        ordem = [
+            "Escuteiro", "Nº de Lanches", "Valor dos Lanches",
+            "Recebimentos", "Doações", "Estornos", "Saldo Conta Corrente"
+        ]
+        df_limpo = df_limpo[[c for c in ordem if c in df_limpo.columns]]
+
+        # Converter últimas 5 colunas em numérico com 2 casas decimais
+        colunas_numericas = df_limpo.columns[-5:]
+        for c in colunas_numericas:
+            df_limpo[c] = pd.to_numeric(df_limpo[c], errors="coerce").map(
+                lambda x: locale.format_string("%.2f", x, grouping=True) if pd.notnull(x) else ""
+            )
+
+        # Centralizar todas as colunas menos "Escuteiro"
+        colunas_centralizar = df_limpo.columns[1:]
+        df_styled = df_limpo.style.set_properties(
+            subset=colunas_centralizar,
+            **{'text-align': 'center'}
+        )
+
+        # Exibir tabela
+        st.dataframe(
+            df_styled,
+            use_container_width=True,
+            column_config={
+                "Escuteiro": st.column_config.TextColumn("Escuteiro", default=True, width="medium"),
+                "Nº de Lanches": st.column_config.NumberColumn("Nº de Lanches", format="%d", width="small"),
+                "Valor dos Lanches": st.column_config.NumberColumn("Valor dos Lanches", width="small"),
+                "Recebimentos": st.column_config.NumberColumn("Recebimentos", width="small"),
+                "Doações": st.column_config.NumberColumn("Doações", width="small"),
+                "Estornos": st.column_config.NumberColumn("Estornos", width="small"),
+                "Saldo Conta Corrente": st.column_config.NumberColumn("Saldo Conta Corrente", width="small"),
+            }
+        )
+
+    # Recebimentos
+    st.divider()
+    st.markdown("### 🧾 Recebimentos")
+
+    df_rec = dados.get("Recebimento", pd.DataFrame())
+    if df_rec.empty:
+        st.info("ℹ️ Não há recebimentos registados.")
+    else:
+        colunas_uteis = ["Nome do Escuteiro", "Valor Recebido", "Meio de Pagamento", "Date", "Quem recebeu?_OLD"]
+        colunas_existentes = [c for c in colunas_uteis if c in df_rec.columns]
+        df_rec_limpo = df_rec[colunas_existentes].copy()
+
+        df_rec_limpo = df_rec_limpo.rename(columns={
+            "Nome do Escuteiro": "Escuteiro",
+            "Valor Recebido": "Valor (€)",
+            "Meio de Pagamento": "Meio de Pagamento",
+            "Date": "Data",
+            "Quem recebeu?_OLD": "Quem Recebeu"
+        })
+
+        if "Data" in df_rec_limpo.columns:
+            df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
+
+        st.dataframe(df_rec_limpo, use_container_width=True)
+
+def dashboard_admin(dados: dict):
+    st.markdown("## 👑 Dashboard Admin")
+    for nome, df in dados.items():
+        st.subheader(f"📂 {nome} ({len(df)} registos)")
+        if df.empty:
+            st.info("ℹ️ Sem registos.")
+        else:
+            df_bruto = df.copy()
+            for c in df_bruto.columns:
+                df_bruto[c] = df_bruto[c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+            st.dataframe(df_bruto.head(20), use_container_width=True)
+
+
+# ======================
+# 5) Mostrar dashboards consoante role
+# ======================
+if role == "admin":
+    dashboard_admin(dados)
+    st.divider()
+    dashboard_tesoureiro(dados)
+    st.divider()
+    dashboard_pais()
+elif role == "tesoureiro":
+    dashboard_tesoureiro(dados)
+    st.divider()
+    dashboard_pais()
+elif role == "pais":
+    dashboard_pais()
+
