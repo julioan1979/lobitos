@@ -141,9 +141,49 @@ dados = st.session_state["dados_cache"]
 # ======================
 # 4) Dashboards
 # ======================
+
 def dashboard_pais():
     st.markdown("## 🏡 Bem-vindos, Famílias Lobitos!")
     st.info("Aqui podem gerir lanches, voluntariado e acompanhar as atividades.")
+
+    df_pedidos = dados.get("Pedidos", pd.DataFrame())
+    df_calendario = dados.get("Calendario", pd.DataFrame())
+    df_volunt = dados.get("Voluntariado Pais", pd.DataFrame())
+    df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
+    df_recipes = dados.get("Recipes", pd.DataFrame())
+
+    if df_escuteiros is None or df_escuteiros.empty or "id" not in df_escuteiros.columns:
+        st.warning("ℹ️ Ainda não há escuteiros registados ou a tabela não está completa.")
+        return
+
+    df_escuteiros = df_escuteiros.copy()
+
+    def _formatar_label(row: pd.Series) -> str:
+        nome = row.get("Nome do Escuteiro")
+        codigo = row.get("ID_Escuteiro")
+        if pd.isna(nome) or not str(nome).strip():
+            nome = "Lobito sem nome"
+        if pd.notna(codigo) and str(codigo).strip():
+            return f"{nome} ({codigo})"
+        return str(nome)
+
+    df_escuteiros["__label"] = df_escuteiros.apply(_formatar_label, axis=1)
+    df_escuteiros = df_escuteiros.sort_values("__label")
+
+    escuteiros_ids = df_escuteiros["id"].tolist()
+    label_por_id = dict(zip(df_escuteiros["id"], df_escuteiros["__label"]))
+
+    if "escuteiro_selecionado" not in st.session_state or st.session_state["escuteiro_selecionado"] not in escuteiros_ids:
+        st.session_state["escuteiro_selecionado"] = escuteiros_ids[0]
+
+    escuteiro_id = st.selectbox(
+        "Escolha o Lobito",
+        options=escuteiros_ids,
+        format_func=lambda value: label_por_id.get(value, value),
+        key="escuteiro_selecionado",
+    )
+    escuteiro_nome = label_por_id.get(escuteiro_id, "")
+    escuteiro_row = df_escuteiros[df_escuteiros["id"] == escuteiro_id].iloc[0]
 
     # 🔘 Barra de Ações
     acoes_pais = mostrar_barra_acoes([
@@ -176,25 +216,185 @@ def dashboard_pais():
 
     st.divider()
 
-    # 📊 Métricas resumidas
+    def _formatar_euro(valor) -> str:
+        if pd.isna(valor):
+            return "—"
+        try:
+            return locale.currency(valor, grouping=True)
+        except Exception:
+            return f"{valor:,.2f} €"
+
+    saldo = pd.to_numeric(escuteiro_row.get("Conta Corrente"), errors="coerce")
+    valor_lanches = pd.to_numeric(escuteiro_row.get("Lanches"), errors="coerce")
+    recebimentos = pd.to_numeric(escuteiro_row.get("Valores recebidos"), errors="coerce")
+    doacoes = pd.to_numeric(escuteiro_row.get("Valores doados"), errors="coerce")
+    estornos = pd.to_numeric(escuteiro_row.get("Valor Estornado"), errors="coerce")
+    n_lanches = pd.to_numeric(escuteiro_row.get("Numero de Lanches"), errors="coerce")
+
+    st.subheader("💰 Situação financeira")
     col1, col2, col3, col4 = st.columns(4)
-    df_pedidos = dados.get("Pedidos", pd.DataFrame())
     with col1:
-        st.metric("📦 Pedidos registados", len(df_pedidos) if not df_pedidos.empty else 0)
-
-    df_calendario = dados.get("Calendario", pd.DataFrame())
+        st.metric("Saldo atual", _formatar_euro(saldo))
     with col2:
-        st.metric("📅 Eventos futuros", len(df_calendario) if not df_calendario.empty else 0)
-
-    df_volunt = dados.get("Voluntariado Pais", pd.DataFrame())
+        st.metric("Recebimentos", _formatar_euro(recebimentos))
     with col3:
-        st.metric("🙋 Voluntariado marcado", len(df_volunt) if not df_volunt.empty else 0)
-
-    df_cc = dados.get("Escuteiros", pd.DataFrame())
+        st.metric("Valor dos Lanches", _formatar_euro(valor_lanches))
     with col4:
-        saldo_total = df_cc["Conta Corrente"].fillna(0).sum() if not df_cc.empty else 0
-        st.metric("💰 Saldo Alcateia", f"{saldo_total:.2f} €")
+        st.metric("Lanches registados", int(n_lanches) if not pd.isna(n_lanches) else 0)
 
+    col5, col6 = st.columns(2)
+    with col5:
+        st.metric("Doações", _formatar_euro(doacoes))
+    with col6:
+        st.metric("Estornos", _formatar_euro(estornos))
+
+    st.divider()
+
+    recipes_map = {}
+    if df_recipes is not None and not df_recipes.empty and "id" in df_recipes.columns:
+        if "Menu" in df_recipes.columns:
+            recipes_map = df_recipes.set_index("id")["Menu"].to_dict()
+
+    def _resolver_lista(valor, mapping) -> str:
+        if isinstance(valor, list):
+            nomes = [mapping.get(item, item) for item in valor]
+            return ", ".join(filter(None, nomes))
+        if pd.isna(valor):
+            return ""
+        return mapping.get(valor, valor)
+
+    def _contem_escuteiro(valor) -> bool:
+        if isinstance(valor, list):
+            return escuteiro_id in valor
+        if pd.isna(valor):
+            return False
+        return valor == escuteiro_id
+
+    pedidos_escuteiro = pd.DataFrame()
+    if df_pedidos is not None and not df_pedidos.empty:
+        if "Escuteiros" in df_pedidos.columns:
+            mask_pedidos = df_pedidos["Escuteiros"].apply(_contem_escuteiro)
+        else:
+            mask_pedidos = pd.Series(False, index=df_pedidos.index)
+        pedidos_escuteiro = df_pedidos[mask_pedidos].copy()
+        if not pedidos_escuteiro.empty and "Date" in pedidos_escuteiro.columns:
+            pedidos_escuteiro["__data"] = pd.to_datetime(pedidos_escuteiro["Date"], errors="coerce")
+            pedidos_escuteiro = pedidos_escuteiro.sort_values("__data", ascending=False)
+
+    st.subheader("📖 Últimos pedidos")
+    if pedidos_escuteiro.empty:
+        st.info("ℹ️ Ainda não há pedidos registados para este lobito.")
+    else:
+        pedidos_mostrar = pedidos_escuteiro.head(5).copy()
+        if "__data" in pedidos_mostrar.columns:
+            pedidos_mostrar["Data"] = pedidos_mostrar["__data"].dt.strftime("%d/%m/%Y")
+        for coluna in ["Bebida", "Lanche", "Fruta"]:
+            if coluna in pedidos_mostrar.columns:
+                pedidos_mostrar[coluna] = pedidos_mostrar[coluna].apply(lambda valor: _resolver_lista(valor, recipes_map))
+        if "Restrição alimentar" in pedidos_mostrar.columns:
+            pedidos_mostrar["Restrição alimentar"] = pedidos_mostrar["Restrição alimentar"].fillna("")
+        colunas_exibir = [c for c in ["Data", "Lanche", "Bebida", "Fruta", "Restrição alimentar"] if c in pedidos_mostrar.columns]
+        st.dataframe(pedidos_mostrar[colunas_exibir], use_container_width=True)
+
+    st.divider()
+
+    hoje = pd.Timestamp.today().normalize()
+    metricas_pedidos = pedidos_escuteiro.copy()
+    if not metricas_pedidos.empty and "__data" in metricas_pedidos.columns:
+        ult30 = metricas_pedidos[metricas_pedidos["__data"] >= hoje - pd.Timedelta(days=30)]
+        total_30 = len(ult30)
+        total_all = len(metricas_pedidos)
+        ultimo_registo = metricas_pedidos.iloc[0]["__data"]
+        bebidas_freq = None
+        if "Bebida" in metricas_pedidos.columns:
+            bebidas_expandidas = []
+            for valor in metricas_pedidos["Bebida"].dropna():
+                if isinstance(valor, list):
+                    bebidas_expandidas.extend(valor)
+                else:
+                    bebidas_expandidas.append(valor)
+            if bebidas_expandidas:
+                bebidas_freq = pd.Series(bebidas_expandidas).value_counts().idxmax()
+                bebidas_freq = recipes_map.get(bebidas_freq, bebidas_freq)
+    else:
+        total_30 = 0
+        total_all = len(pedidos_escuteiro)
+        ultimo_registo = None
+        bebidas_freq = None
+
+    col7, col8, col9 = st.columns(3)
+    with col7:
+        st.metric("Pedidos (30 dias)", total_30)
+    with col8:
+        st.metric("Pedidos totais", total_all)
+    with col9:
+        st.metric("Último pedido", ultimo_registo.strftime("%d/%m/%Y") if isinstance(ultimo_registo, pd.Timestamp) and not pd.isna(ultimo_registo) else "—")
+
+    if bebidas_freq:
+        st.caption(f"🍹 Bebida favorita recente: {bebidas_freq}")
+
+    st.divider()
+
+    calendario_por_id = {}
+    if df_calendario is not None and not df_calendario.empty and "id" in df_calendario.columns:
+        df_calendario = df_calendario.copy()
+        df_calendario["__data"] = pd.to_datetime(df_calendario.get("Data"), errors="coerce")
+        calendario_por_id = df_calendario.set_index("id").to_dict(orient="index")
+
+    def _info_calendario(valor):
+        ids = []
+        if isinstance(valor, list):
+            ids = valor
+        elif pd.notna(valor):
+            ids = [valor]
+        infos = []
+        for id_cal in ids:
+            info = calendario_por_id.get(id_cal)
+            if info:
+                data = pd.to_datetime(info.get("Data"), errors="coerce")
+                agenda = info.get("Agenda")
+                infos.append((data, agenda))
+        infos = [i for i in infos if i[0] is not None]
+        if not infos:
+            return None
+        return sorted(infos, key=lambda item: item[0])[0]
+
+    proximo_volunt = None
+    if df_volunt is not None and not df_volunt.empty and "Escuteiro" in df_volunt.columns:
+        df_volunt = df_volunt.copy()
+        df_volunt = df_volunt[df_volunt["Escuteiro"].apply(_contem_escuteiro)].copy()
+        if "Cancelado" in df_volunt.columns:
+            df_volunt = df_volunt[~df_volunt["Cancelado"].astype(str).str.lower().eq("true")]
+        if not df_volunt.empty:
+            if "Date (calendário)" in df_volunt.columns:
+                df_volunt["__info"] = df_volunt["Date (calendário)"].apply(_info_calendario)
+            else:
+                df_volunt["__info"] = None
+            df_volunt = df_volunt[df_volunt["__info"].notna()]
+            if not df_volunt.empty:
+                df_volunt["__data"] = df_volunt["__info"].apply(lambda item: item[0])
+                df_volunt["__agenda"] = df_volunt["__info"].apply(lambda item: item[1])
+                df_volunt = df_volunt[df_volunt["__data"] >= hoje]
+                if not df_volunt.empty:
+                    proximo_volunt = df_volunt.sort_values("__data").iloc[0]
+
+    st.subheader("📅 Próximos compromissos")
+    if proximo_volunt is not None:
+        data_vol = proximo_volunt["__data"].strftime("%d/%m/%Y") if not pd.isna(proximo_volunt["__data"]) else "Data a confirmar"
+        agenda_vol = proximo_volunt["__agenda"] or "Voluntariado"
+        st.success(f"✅ {escuteiro_nome} está inscrito no voluntariado de {data_vol}: {agenda_vol}")
+    else:
+        proximo_evento = None
+        if calendario_por_id:
+            df_cal_future = df_calendario[df_calendario["__data"] >= hoje].sort_values("__data")
+            if not df_cal_future.empty:
+                proximo_evento = df_cal_future.iloc[0]
+        if proximo_evento is not None:
+            data_evt = proximo_evento["__data"].strftime("%d/%m/%Y") if not pd.isna(proximo_evento["__data"]) else "Data a definir"
+            agenda_evt = proximo_evento.get("Agenda", "Atividade da Alcateia")
+            st.info(f"📅 Próximo evento da Alcateia: {data_evt} – {agenda_evt}")
+        else:
+            st.info("ℹ️ Não há eventos futuros registados neste momento.")
 
 
 def dashboard_tesoureiro(dados: dict):
