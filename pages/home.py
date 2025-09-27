@@ -27,6 +27,11 @@ st.set_page_config(page_title="Portal Lobitos", page_icon="🐾", layout="wide")
 # ======================
 menu_with_redirect()
 role = st.session_state.get("role")
+user_info = st.session_state.get("user", {})
+allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else set()
+
+if role is None:
+    st.stop()
 
 #role = st.selectbox(
 #    "Escolha o tipo de utilizador",
@@ -52,7 +57,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
 
     # Mapear tabelas necessárias por role
     tabelas_por_role = {
-        "pais": ["Pedidos", "Calendario", "Voluntariado Pais", "Escuteiros"],
+        "pais": ["Pedidos", "Calendario", "Voluntariado Pais", "Escuteiros", "Recipes"],
         "tesoureiro": ["Escuteiros", "Recebimento", "Publicar Menu do Scouts"],
         "admin": None  # admin carrega todas
     }
@@ -157,6 +162,15 @@ def dashboard_pais():
         return
 
     df_escuteiros = df_escuteiros.copy()
+
+    if role == "pais":
+        if not allowed_escuteiros:
+            st.warning("ℹ️ A sua conta ainda não tem escuteiros associados. Contacte a equipa de administração.")
+            return
+        df_escuteiros = df_escuteiros[df_escuteiros["id"].isin(allowed_escuteiros)]
+        if df_escuteiros.empty:
+            st.warning("⚠️ Não existem dados para os escuteiros associados a esta conta.")
+            return
 
     def _formatar_label(row: pd.Series) -> str:
         nome = row.get("Nome do Escuteiro")
