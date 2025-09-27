@@ -109,6 +109,7 @@ if st.button("Entrar 🚀"):
                         "email": email_normalizado,
                         "escuteiros_ids": escuteiros_ids,
                         "nomes": nomes_escuteiros,
+                        "all_access": role in {"admin", "tesoureiro"},
                     }
 
                     st.success(f"✅ Login como {role.capitalize()}!")

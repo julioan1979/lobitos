@@ -163,14 +163,14 @@ def dashboard_pais():
 
     df_escuteiros = df_escuteiros.copy()
 
-    if role == "pais":
-        if not allowed_escuteiros:
-            st.warning("ℹ️ A sua conta ainda não tem escuteiros associados. Contacte a equipa de administração.")
-            return
+    if allowed_escuteiros:
         df_escuteiros = df_escuteiros[df_escuteiros["id"].isin(allowed_escuteiros)]
         if df_escuteiros.empty:
             st.warning("⚠️ Não existem dados para os escuteiros associados a esta conta.")
             return
+    elif role == "pais":
+        st.warning("ℹ️ A sua conta ainda não tem escuteiros associados. Contacte a equipa de administração.")
+        return
 
     def _formatar_label(row: pd.Series) -> str:
         nome = row.get("Nome do Escuteiro")
