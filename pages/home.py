@@ -100,6 +100,15 @@ def mostrar_barra_acoes(botoes: list[tuple[str, str]], espacador: int = 6) -> di
     return resultados
 
 
+
+
+def mapear_lista(valor, mapping):
+    if isinstance(valor, list):
+        return ", ".join(mapping.get(v, v) for v in valor)
+    if pd.isna(valor):
+        return ""
+    return mapping.get(valor, valor)
+
 def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
     if not st.session_state.get(session_key, False):
         return
@@ -659,11 +668,11 @@ def dashboard_admin(dados: dict):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("- Cancelar lanche (forçado)")
-            if st.button("🚫 Abrir formulário", key="abrir_forcado_lanche", use_container_width=True):
+            if st.button("🚫 Abrir formulário de cancelamento", key="abrir_forcado_lanche", use_container_width=True):
                 st.session_state["mostrar_form_registo"] = True
         with col2:
             st.markdown("- Criar novo pedido (forçado)")
-            if st.button("🆕 Abrir formulário", key="abrir_forcado_pedido", use_container_width=True):
+            if st.button("🆕 Abrir formulário de pedido", key="abrir_forcado_pedido", use_container_width=True):
                 st.session_state["mostrar_form_pedido"] = True
 
     mostrar_formulario(
@@ -689,15 +698,23 @@ def dashboard_admin(dados: dict):
     df_volunt = dados.get("Voluntariado Pais", pd.DataFrame())
     df_receb = dados.get("Recebimento", pd.DataFrame())
     df_esc = dados.get("Escuteiros", pd.DataFrame())
+    df_recipes = dados.get("Recipes", pd.DataFrame())
 
     hoje = pd.Timestamp.today().normalize()
+
+    recipes_map = {}
+    if df_recipes is not None and not df_recipes.empty and "id" in df_recipes.columns:
+        recipes_map = df_recipes.set_index("id").get("Menu", pd.Series(dtype=str)).dropna().to_dict()
+
+    escuteiros_map = {}
+    if df_esc is not None and not df_esc.empty and "id" in df_esc.columns:
+        escuteiros_map = df_esc.set_index("id").get("Nome do Escuteiro", pd.Series(dtype=str)).dropna().to_dict()
 
     col1, col2, col3, col4 = st.columns(4)
 
     pendentes_cancel = 0
-    if not df_pedidos.empty:
-        if "Pendente de Cancelamento" in df_pedidos.columns:
-            pendentes_cancel = df_pedidos["Pendente de Cancelamento"].astype(str).str.lower().eq("true").sum()
+    if not df_pedidos.empty and "Pendente de Cancelamento" in df_pedidos.columns:
+        pendentes_cancel = df_pedidos["Pendente de Cancelamento"].astype(str).str.lower().eq("true").sum()
     with col1:
         st.metric("Cancelamentos pendentes", int(pendentes_cancel))
 
@@ -710,12 +727,11 @@ def dashboard_admin(dados: dict):
 
     voluntariado_em_falta = 0
     if not df_volunt.empty:
-        if "Pais" in df_volunt.columns:
-            voluntariado_em_falta = df_volunt["Pais"].isna().sum()
-        if "Cancelado" in df_volunt.columns:
-            voluntariado_em_falta = df_volunt[
-                (df_volunt["Pais"].isna()) & (~df_volunt["Cancelado"].astype(str).str.lower().eq("true"))
-            ].shape[0]
+        df_volunt_check = df_volunt.copy()
+        if "Cancelado" in df_volunt_check.columns:
+            df_volunt_check = df_volunt_check[~df_volunt_check["Cancelado"].astype(str).str.lower().eq("true")]
+        if "Pais" in df_volunt_check.columns:
+            voluntariado_em_falta = df_volunt_check["Pais"].apply(lambda x: not isinstance(x, list) or len(x) == 0).sum()
     with col3:
         st.metric("Turnos sem voluntário", int(voluntariado_em_falta))
 
@@ -737,50 +753,104 @@ def dashboard_admin(dados: dict):
         if df_pend.empty:
             st.info("Nenhum pedido pendente.")
         else:
-            cols = [c for c in ["Date", "Escuteiros", "Lanche", "Bebida", "Senha_marcações", "Cancelado?", "Pendente de Cancelamento"] if c in df_pend.columns]
-            df_pend = df_pend[cols]
             if "Date" in df_pend.columns:
                 df_pend["Date"] = pd.to_datetime(df_pend["Date"], errors="coerce").dt.strftime("%d/%m/%Y")
-            st.dataframe(df_pend, use_container_width=True)
+            if "Escuteiros" in df_pend.columns:
+                df_pend["Escuteiros"] = df_pend["Escuteiros"].apply(lambda v: mapear_lista(v, escuteiros_map))
+            for coluna in ["Lanche", "Bebida", "Fruta"]:
+                if coluna in df_pend.columns:
+                    df_pend[coluna] = df_pend[coluna].apply(lambda v: mapear_lista(v, recipes_map))
+            if "Senha_marcações" in df_pend.columns:
+                df_pend["Senha_marcações"] = df_pend["Senha_marcações"].fillna("")
+            cols = [c for c in ["Date", "Escuteiros", "Lanche", "Bebida", "Fruta", "Senha_marcações", "Cancelado?", "Pendente de Cancelamento"] if c in df_pend.columns]
+            st.dataframe(df_pend[cols], use_container_width=True, hide_index=True)
 
     st.markdown("### 📅 Eventos sem voluntários")
-    if df_calendario.empty or df_volunt.empty:
-        st.info("Sem dados suficientes para cruzamento.")
+    if df_calendario.empty:
+        st.info("Sem eventos registados.")
     else:
-        df_volunt_clean = df_volunt.copy()
-        if "Cancelado" in df_volunt_clean.columns:
-            df_volunt_clean = df_volunt_clean[~df_volunt_clean["Cancelado"].astype(str).str.lower().eq("true")]
-        if "Date (calendário)" in df_volunt_clean.columns:
-            eventos_com_vol = set()
-            for val in df_volunt_clean["Date (calendário)"].dropna():
+        df_cal = df_calendario.copy()
+        if "Data" in df_cal.columns:
+            df_cal["__data"] = pd.to_datetime(df_cal["Data"], errors="coerce")
+        else:
+            df_cal["__data"] = pd.NaT
+
+        eventos_com_vol = set()
+        if not df_volunt.empty and "Date (calendário)" in df_volunt.columns:
+            df_volunt_valid = df_volunt.copy()
+            if "Cancelado" in df_volunt_valid.columns:
+                df_volunt_valid = df_volunt_valid[~df_volunt_valid["Cancelado"].astype(str).str.lower().eq("true")]
+            for val in df_volunt_valid["Date (calendário)"].dropna():
                 if isinstance(val, list):
                     eventos_com_vol.update(val)
                 else:
                     eventos_com_vol.add(val)
-        else:
-            eventos_com_vol = set()
 
-        df_cal = df_calendario.copy()
         if "id" in df_cal.columns:
             df_cal["__tem_volunt"] = df_cal["id"].apply(lambda x: x in eventos_com_vol)
-            sem_vol = df_cal[(~df_cal["__tem_volunt"])]
-            if "Data" in sem_vol.columns:
-                sem_vol["Data"] = pd.to_datetime(sem_vol["Data"], errors="coerce")
-                sem_vol = sem_vol.sort_values("Data")
-                sem_vol["Data"] = sem_vol["Data"].dt.strftime("%d/%m/%Y")
-            cols = [c for c in ["Data", "Agenda", "Haverá preparação de Lanches?"] if c in sem_vol.columns]
-            if sem_vol.empty:
-                st.success("Todos os eventos têm voluntários associados.")
+            sem_vol = df_cal[~df_cal["__tem_volunt"] & (df_cal["__data"] >= hoje)].copy()
+            sem_vol = sem_vol.sort_values("__data")
+            if not sem_vol.empty:
+                sem_vol["Data"] = sem_vol["__data"].dt.strftime("%d/%m/%Y")
+                cols = [c for c in ["Data", "Agenda", "Haverá preparação de Lanches?", "Local"] if c in sem_vol.columns]
+                st.dataframe(sem_vol[cols], use_container_width=True, hide_index=True)
             else:
-                st.dataframe(sem_vol[cols], use_container_width=True)
+                st.success("Todos os eventos futuros têm voluntários associados.")
         else:
             st.info("Não foi possível cruzar eventos sem voluntários (sem coluna 'id').")
+
+        st.markdown("#### Atualizar preparação de lanches")
+        if "id" in df_cal.columns:
+            futuros = df_cal[df_cal["__data"].notna() & (df_cal["__data"] >= hoje)].sort_values("__data")
+            if futuros.empty:
+                st.info("Sem eventos futuros para atualizar.")
+            else:
+                options = list(futuros.index)
+                def _label(idx):
+                    row = futuros.loc[idx]
+                    data = row.get("__data")
+                    data_str = data.strftime("%d/%m/%Y") if pd.notna(data) else "Sem data"
+                    agenda = row.get("Agenda") or ""
+                    return f"{data_str} – {agenda}"
+                evento_idx = st.selectbox(
+                    "Escolha o evento",
+                    options,
+                    format_func=_label,
+                    key="admin_evento_sel",
+                )
+                evento_id = futuros.loc[evento_idx, "id"]
+                atual_flag = bool(futuros.loc[evento_idx].get("Haverá preparação de Lanches?"))
+                novo_flag = st.checkbox(
+                    "Haverá preparação de Lanches?",
+                    value=atual_flag,
+                    key=f"admin_evento_flag_{evento_id}",
+                )
+                if st.button("Guardar alteração", key=f"admin_evento_guardar_{evento_id}"):
+                    if novo_flag == atual_flag:
+                        st.info("Nenhuma alteração detectada.")
+                    else:
+                        try:
+                            api.table(BASE_ID, "Calendario").update(evento_id, {"Haverá preparação de Lanches?": novo_flag})
+                        except Exception as exc:
+                            st.error(f"Não consegui atualizar o evento: {exc}")
+                        else:
+                            st.success("Evento atualizado com sucesso.")
+                            st.experimental_rerun()
+        else:
+            st.info("Atualização indisponível (sem coluna 'id').")
 
     st.markdown("### 🧾 Registos recentes")
     col1, col2, col3 = st.columns(3)
     if not df_pedidos.empty and "Created" in df_pedidos.columns:
-        df_recent = df_pedidos.sort_values("Created", ascending=False).head(5)
-        cols = [c for c in ["Created", "Escuteiros", "Lanche", "Senha_marcações"] if c in df_recent.columns]
+        df_recent = df_pedidos.sort_values("Created", ascending=False).head(5).copy()
+        if "Escuteiros" in df_recent.columns:
+            df_recent["Escuteiros"] = df_recent["Escuteiros"].apply(lambda v: mapear_lista(v, escuteiros_map))
+        if "Senha_marcações" in df_recent.columns:
+            df_recent["Senha_marcações"] = df_recent["Senha_marcações"].fillna("")
+        for coluna in ["Lanche", "Bebida", "Fruta"]:
+            if coluna in df_recent.columns:
+                df_recent[coluna] = df_recent[coluna].apply(lambda v: mapear_lista(v, recipes_map))
+        cols = [c for c in ["Created", "Escuteiros", "Lanche", "Bebida", "Fruta", "Senha_marcações"] if c in df_recent.columns]
         with col1:
             st.caption("Pedidos")
             st.dataframe(df_recent[cols], use_container_width=True, hide_index=True)
@@ -796,18 +866,6 @@ def dashboard_admin(dados: dict):
         with col3:
             st.caption("Escuteiros")
             st.dataframe(df_recent_esc[cols], use_container_width=True, hide_index=True)
-
-    st.divider()
-
-    with st.expander("Ver tabelas completas", expanded=False):
-        for nome, df in dados.items():
-            if df.empty:
-                continue
-            st.subheader(f"📑 {nome} ({len(df)} registos)")
-            df_bruto = df.copy()
-            for c in df_bruto.columns:
-                df_bruto[c] = df_bruto[c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
-            st.dataframe(df_bruto.head(200), use_container_width=True)
 
 
 # ======================
