@@ -74,6 +74,33 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             dados[nome] = pd.DataFrame()
     return dados
 
+def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
+    if not st.session_state.get(session_key, False):
+        return
+    with st.container(border=True):
+        col1, col2 = st.columns([8, 1])
+        with col1:
+            st.markdown(titulo)
+        with col2:
+            if st.button("❌", key=f"fechar_{session_key}"):
+                st.session_state[session_key] = False
+                st.rerun()
+
+        altura_render = container_height if container_height is not None else iframe_height + 50
+
+        components.html(
+            f"""
+            <iframe class="airtable-embed"
+                src="{iframe_url}"
+                frameborder="0" onmousewheel="" width="100%" height="{iframe_height}"
+                style="background: transparent; border: 1px solid #ccc;">
+            </iframe>
+            """,
+            height=altura_render,
+            scrolling=True,
+        )
+
+
 # ======================
 # 3) Cache e botão de refresh
 # ======================
@@ -109,46 +136,22 @@ def dashboard_pais():
             st.session_state["mostrar_form_cancelar"] = True
 
     # Formulário Escolha dos Lanches
-    if st.session_state.get("mostrar_form_lanche", False):
-        with st.container(border=True):
-            col1, col2 = st.columns([8,1])
-            with col1:
-                st.markdown("### 🍞 Formulário de Escolha dos Lanches")
-            with col2:
-                if st.button("❌", key="fechar_lanche"):
-                    st.session_state["mostrar_form_lanche"] = False
-                    st.rerun()
-
-            components.html(
-                """
-                <iframe class="airtable-embed"
-                    src="https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
-                    frameborder="0" onmousewheel="" width="100%" height="600"
-                    style="background: transparent; border: 1px solid #ccc;">
-                </iframe>
-                """,
-                height=650,
-                scrolling=True
-            )
+    mostrar_formulario(
+        session_key="mostrar_form_lanche",
+        titulo="### 🍞 Formulário de Escolha dos Lanches",
+        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form",
+        iframe_height=600,
+        container_height=650,
+    )
 
     # Formulário Cancelar Lanche
-    if st.session_state.get("mostrar_form_cancelar", False):
-        with st.container(border=True):
-            col1, col2 = st.columns([8,1])
-            with col1:
-                st.markdown("### ❌ Formulário de Cancelamento de Lanche")
-            with col2:
-                if st.button("❌", key="fechar_cancelar"):
-                    st.session_state["mostrar_form_cancelar"] = False
-                    st.rerun()
-
-            components.html(
-                """
-                <iframe class="airtable-embed" src="https://airtable.com/embed/appzwzHD5YUCyIx63/shr5niXN6y71jcFRu" frameborder="0" onmousewheel="" width="100%" height="533" style="background: transparent; border: 1px solid #ccc;"></iframe>
-                """,
-                height=650,
-                scrolling=True
-            )
+    mostrar_formulario(
+        session_key="mostrar_form_cancelar",
+        titulo="### ❌ Formulário de Cancelamento de Lanche",
+        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/shr5niXN6y71jcFRu",
+        iframe_height=533,
+        container_height=650,
+    )
 
     st.divider()
 
@@ -188,51 +191,23 @@ def dashboard_tesoureiro(dados: dict):
     
 
     # Mostrar formulário Recebimento
-    if st.session_state.get("mostrar_form_receb", False):
-        with st.container(border=True):  # dá um quadro visível
-            col1, col2 = st.columns([8,1])  # espaço para botão no canto
-            with col1:
-                st.markdown("### 📋 Formulário de Recebimento")
-            with col2:
-                if st.button("❌", key="fechar_receb"):
-                    st.session_state["mostrar_form_receb"] = False
-                    st.rerun()
-
-            components.html(
-                """
-                <iframe class="airtable-embed"
-                    src="https://airtable.com/embed/appzwzHD5YUCyIx63/shrJKmfQLKx223tjS"
-                    frameborder="0" onmousewheel="" width="100%" height="600"
-                    style="background: transparent; border: 1px solid #ccc;">
-                </iframe>
-                """,
-                height=650,
-                scrolling=True
-            )
+    mostrar_formulario(
+        session_key="mostrar_form_receb",
+        titulo="### 📋 Formulário de Recebimento",
+        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/shrJKmfQLKx223tjS",
+        iframe_height=600,
+        container_height=650,
+    )
 
 
     # Mostrar formulário Estorno
-    if st.session_state.get("mostrar_form_estorno", False):
-        with st.container(border=True):
-            col1, col2 = st.columns([8,1])
-            with col1:
-                st.markdown("### 📋 Formulário de Estorno")
-            with col2:
-                if st.button("❌", key="fechar_estorno"):
-                    st.session_state["mostrar_form_estorno"] = False
-                    st.rerun()
-
-            components.html(
-                """
-                <iframe class="airtable-embed"
-                    src="https://airtable.com/embed/appzwzHD5YUCyIx63/shrWikw7lhXnZFnL6"
-                    frameborder="0" onmousewheel="" width="100%" height="600"
-                    style="background: transparent; border: 1px solid #ccc;">
-                </iframe>
-                """,
-                height=650,
-                scrolling=True
-            )
+    mostrar_formulario(
+        session_key="mostrar_form_estorno",
+        titulo="### 📋 Formulário de Estorno",
+        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/shrWikw7lhXnZFnL6",
+        iframe_height=600,
+        container_height=650,
+    )
 
 
 
@@ -428,50 +403,22 @@ def dashboard_admin(dados: dict):
             st.session_state["mostrar_form_pedido"] = True
 
     # Formulário: Novo Registo
-    if st.session_state.get("mostrar_form_registo", False):
-        with st.container(border=True):
-            col1, col2 = st.columns([8,1])
-            with col1:
-                st.markdown("### 📝 Formulário de Novo Registo")
-            with col2:
-                if st.button("❌", key="fechar_registo"):
-                    st.session_state["mostrar_form_registo"] = False
-                    st.rerun()
-
-            components.html(
-                """
-                <iframe class="airtable-embed"
-                    src="https://airtable.com/embed/appDSu6pj0DJmZSn8/pagsw4PQrv9RaTdJS/form"
-                    frameborder="0" onmousewheel="" width="100%" height="533"
-                    style="background: transparent; border: 1px solid #ccc;">
-                </iframe>
-                """,
-                height=600,
-                scrolling=True
-            )
+    mostrar_formulario(
+        session_key="mostrar_form_registo",
+        titulo="### 📍 Formulário de Novo Registo",
+        iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pagsw4PQrv9RaTdJS/form",
+        iframe_height=533,
+        container_height=600,
+    )
 
     # Formulário: Novo Pedido
-    if st.session_state.get("mostrar_form_pedido", False):
-        with st.container(border=True):
-            col1, col2 = st.columns([8,1])
-            with col1:
-                st.markdown("### 📋 Formulário de Novo Pedido")
-            with col2:
-                if st.button("❌", key="fechar_pedido"):
-                    st.session_state["mostrar_form_pedido"] = False
-                    st.rerun()
-
-            components.html(
-                """
-                <iframe class="airtable-embed"
-                    src="https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form"
-                    frameborder="0" onmousewheel="" width="100%" height="533"
-                    style="background: transparent; border: 1px solid #ccc;">
-                </iframe>
-                """,
-                height=600,
-                scrolling=True
-            )
+    mostrar_formulario(
+        session_key="mostrar_form_pedido",
+        titulo="### 📋 Formulário de Novo Pedido",
+        iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form",
+        iframe_height=533,
+        container_height=600,
+    )
 
     st.divider()
 
