@@ -74,6 +74,25 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             dados[nome] = pd.DataFrame()
     return dados
 
+def mostrar_barra_acoes(botoes: list[tuple[str, str]], espacador: int = 6) -> dict[str, bool]:
+    """Renderiza uma barra de ações consistente e devolve o estado dos botões."""
+    if not botoes:
+        return {}
+
+    colunas_config = [1] * len(botoes)
+    if espacador > 0:
+        colunas_config.append(espacador)
+
+    colunas = st.columns(colunas_config)
+    resultados = {}
+
+    for coluna, (label, key) in zip(colunas, botoes):
+        with coluna:
+            resultados[key] = st.button(label, key=key, use_container_width=True)
+
+    return resultados
+
+
 def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
     if not st.session_state.get(session_key, False):
         return
@@ -127,13 +146,15 @@ def dashboard_pais():
     st.info("Aqui podem gerir lanches, voluntariado e acompanhar as atividades.")
 
     # 🔘 Barra de Ações
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("🍞 Marcar Lanche"):
-            st.session_state["mostrar_form_lanche"] = True
-    with col2:
-        if st.button("❌ Cancelar Lanche"):
-            st.session_state["mostrar_form_cancelar"] = True
+    acoes_pais = mostrar_barra_acoes([
+        ("🍞 Marcar Lanche", "btn_marcar_lanche"),
+        ("❌ Cancelar Lanche", "btn_cancelar_lanche"),
+    ])
+
+    if acoes_pais.get("btn_marcar_lanche"):
+        st.session_state["mostrar_form_lanche"] = True
+    if acoes_pais.get("btn_cancelar_lanche"):
+        st.session_state["mostrar_form_cancelar"] = True
 
     # Formulário Escolha dos Lanches
     mostrar_formulario(
@@ -180,15 +201,16 @@ def dashboard_tesoureiro(dados: dict):
     st.markdown("## 💰 Dashboard Tesoureiro")
 
     # 🔘 Barra de Ações
-    col1, col2, col3 = st.columns([1,1,6])
-    with col1:
-        if st.button("➕ Recebimento"):
-            st.session_state["mostrar_form_receb"] = True
-    with col2:
-        if st.button("➖ Estorno"):
-            st.session_state["mostrar_form_estorno"] = True
+    acoes_tesoureiro = mostrar_barra_acoes([
+        ("➕ Recebimento", "btn_recebimento"),
+        ("➖ Estorno", "btn_estorno"),
+    ])
 
-    
+    if acoes_tesoureiro.get("btn_recebimento"):
+        st.session_state["mostrar_form_receb"] = True
+    if acoes_tesoureiro.get("btn_estorno"):
+        st.session_state["mostrar_form_estorno"] = True
+
 
     # Mostrar formulário Recebimento
     mostrar_formulario(
@@ -397,13 +419,15 @@ def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
 
     # 🔘 Barra de Ações
-    col1, col2, col3 = st.columns([1,1,6])
-    with col1:
-        if st.button("📝 Novo Registo"):
-            st.session_state["mostrar_form_registo"] = True
-    with col2:
-        if st.button("📋 Novo Pedido"):
-            st.session_state["mostrar_form_pedido"] = True
+    acoes_admin = mostrar_barra_acoes([
+        ("📝 Novo Registo", "btn_novo_registo"),
+        ("📋 Novo Pedido", "btn_novo_pedido"),
+    ])
+
+    if acoes_admin.get("btn_novo_registo"):
+        st.session_state["mostrar_form_registo"] = True
+    if acoes_admin.get("btn_novo_pedido"):
+        st.session_state["mostrar_form_pedido"] = True
 
     # Formulário: Novo Registo
     mostrar_formulario(
