@@ -354,8 +354,15 @@ def dashboard_pais():
     col7, col8, col9 = st.columns(3)
     with col7:
         st.metric("Pedidos (30 dias)", total_30)
+
+    senha_mais_recente = None
+    if not metricas_pedidos.empty and "Senha_marcações" in metricas_pedidos.columns:
+        # usa a mesma ordenação descendente em __data para obter a última senha usada
+        senha_mais_recente = metricas_pedidos.iloc[0].get("Senha_marcações")
+
     with col8:
-        st.metric("Pedidos totais", total_all)
+        st.metric("Senhas (última marcação)", senha_mais_recente or "—")
+
     with col9:
         st.metric("Último pedido", ultimo_registo.strftime("%d/%m/%Y") if isinstance(ultimo_registo, pd.Timestamp) and not pd.isna(ultimo_registo) else "—")
 
