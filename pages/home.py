@@ -289,11 +289,18 @@ def dashboard_pais():
     if df_pedidos is not None and not df_pedidos.empty:
         if "Escuteiros" in df_pedidos.columns:
             mask_pedidos = df_pedidos["Escuteiros"].apply(_contem_escuteiro)
+        elif "Escuteiro" in df_pedidos.columns:
+            mask_pedidos = df_pedidos["Escuteiro"].apply(_contem_escuteiro)
         else:
             mask_pedidos = pd.Series(False, index=df_pedidos.index)
         pedidos_escuteiro = df_pedidos[mask_pedidos].copy()
-        if not pedidos_escuteiro.empty and "Date" in pedidos_escuteiro.columns:
-            pedidos_escuteiro["__data"] = pd.to_datetime(pedidos_escuteiro["Date"], errors="coerce")
+        if not pedidos_escuteiro.empty:
+            if "Date" in pedidos_escuteiro.columns:
+                pedidos_escuteiro["__data"] = pd.to_datetime(pedidos_escuteiro["Date"], errors="coerce")
+            elif "Created" in pedidos_escuteiro.columns:
+                pedidos_escuteiro["__data"] = pd.to_datetime(pedidos_escuteiro["Created"], errors="coerce")
+            else:
+                pedidos_escuteiro["__data"] = pd.NaT
             pedidos_escuteiro = pedidos_escuteiro.sort_values("__data", ascending=False)
 
     st.subheader("📖 Últimos pedidos")
