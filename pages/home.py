@@ -334,33 +334,36 @@ def dashboard_tesoureiro(dados: dict):
         ]
         df_limpo = df_limpo[[c for c in ordem if c in df_limpo.columns]]
 
-        # Converter últimas 5 colunas em numérico com 2 casas decimais
-        colunas_numericas = df_limpo.columns[-5:]
-        for c in colunas_numericas:
-            df_limpo[c] = pd.to_numeric(df_limpo[c], errors="coerce").map(
-                lambda x: locale.format_string("%.2f", x, grouping=True) if pd.notnull(x) else ""
-            )
+        # Garantir que colunas numéricas mantêm tipo numérico para filtros/ordenar
+        colunas_numericas = [
+            "Nº de Lanches",
+            "Valor dos Lanches",
+            "Recebimentos",
+            "Doações",
+            "Estornos",
+            "Saldo Conta Corrente",
+        ]
+        for coluna in colunas_numericas:
+            if coluna in df_limpo.columns:
+                df_limpo[coluna] = pd.to_numeric(df_limpo[coluna], errors="coerce")
 
-        # Centralizar todas as colunas menos "Escuteiro"
-        colunas_centralizar = df_limpo.columns[1:]
-        df_styled = df_limpo.style.set_properties(
-            subset=colunas_centralizar,
-            **{'text-align': 'center'}
-        )
+        if "Nº de Lanches" in df_limpo.columns:
+            df_limpo["Nº de Lanches"] = df_limpo["Nº de Lanches"].astype("Int64")
 
-        # Exibir tabela
+        column_config = {
+            "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
+        }
+        if "Nº de Lanches" in df_limpo.columns:
+            column_config["Nº de Lanches"] = st.column_config.NumberColumn("Nº de Lanches", format="%d", width="small")
+
+        for coluna in ["Valor dos Lanches", "Recebimentos", "Doações", "Estornos", "Saldo Conta Corrente"]:
+            if coluna in df_limpo.columns:
+                column_config[coluna] = st.column_config.NumberColumn(coluna, format="%.2f €", width="small")
+
         st.dataframe(
-            df_styled,
+            df_limpo,
             use_container_width=True,
-            column_config={
-                "Escuteiro": st.column_config.TextColumn("Escuteiro", default=True, width="medium"),
-                "Nº de Lanches": st.column_config.NumberColumn("Nº de Lanches", format="%d", width="small"),
-                "Valor dos Lanches": st.column_config.NumberColumn("Valor dos Lanches", width="small"),
-                "Recebimentos": st.column_config.NumberColumn("Recebimentos", width="small"),
-                "Doações": st.column_config.NumberColumn("Doações", width="small"),
-                "Estornos": st.column_config.NumberColumn("Estornos", width="small"),
-                "Saldo Conta Corrente": st.column_config.NumberColumn("Saldo Conta Corrente", width="small"),
-            }
+            column_config=column_config,
         )
 
     # Recebimentos
