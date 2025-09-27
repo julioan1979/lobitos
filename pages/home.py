@@ -663,17 +663,17 @@ def dashboard_tesoureiro(dados: dict):
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
 
-    with st.container():
-        st.markdown("### 📝 Ações rápidas")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("- Cancelar lanche (forçado)")
-            if st.button("🚫 Abrir formulário de cancelamento", key="abrir_forcado_lanche", use_container_width=True):
-                st.session_state["mostrar_form_registo"] = True
-        with col2:
-            st.markdown("- Criar novo pedido (forçado)")
-            if st.button("🆕 Abrir formulário de pedido", key="abrir_forcado_pedido", use_container_width=True):
-                st.session_state["mostrar_form_pedido"] = True
+    st.markdown("### 📝 Ações rápidas")
+    acoes_admin = mostrar_barra_acoes([
+        ("🚫 Cancelar lanche (forçado)", "btn_admin_cancelar"),
+        ("📝 Novo pedido (forçado)", "btn_admin_pedido"),
+    ])
+    st.caption("Use estas ações apenas em casos excecionais; os formulários abrem em modo forçado.")
+
+    if acoes_admin.get("btn_admin_cancelar"):
+        st.session_state["mostrar_form_registo"] = True
+    if acoes_admin.get("btn_admin_pedido"):
+        st.session_state["mostrar_form_pedido"] = True
 
     mostrar_formulario(
         session_key="mostrar_form_registo",
@@ -799,45 +799,114 @@ def dashboard_admin(dados: dict):
         else:
             st.info("Não foi possível cruzar eventos sem voluntários (sem coluna 'id').")
 
-        st.markdown("#### Atualizar preparação de lanches")
-        if "id" in df_cal.columns:
+        st.markdown("#### Gestão de eventos e lanches")
+        if "id" not in df_cal.columns:
+            st.info("Gestão indisponível (sem coluna 'id' no calendário).")
+        else:
             futuros = df_cal[df_cal["__data"].notna() & (df_cal["__data"] >= hoje)].sort_values("__data")
-            if futuros.empty:
-                st.info("Sem eventos futuros para atualizar.")
-            else:
-                options = list(futuros.index)
-                def _label(idx):
-                    row = futuros.loc[idx]
-                    data = row.get("__data")
-                    data_str = data.strftime("%d/%m/%Y") if pd.notna(data) else "Sem data"
-                    agenda = row.get("Agenda") or ""
-                    return f"{data_str} – {agenda}"
-                evento_idx = st.selectbox(
-                    "Escolha o evento",
-                    options,
-                    format_func=_label,
-                    key="admin_evento_sel",
-                )
-                evento_id = futuros.loc[evento_idx, "id"]
-                atual_flag = bool(futuros.loc[evento_idx].get("Haverá preparação de Lanches?"))
-                novo_flag = st.checkbox(
-                    "Haverá preparação de Lanches?",
-                    value=atual_flag,
-                    key=f"admin_evento_flag_{evento_id}",
-                )
-                if st.button("Guardar alteração", key=f"admin_evento_guardar_{evento_id}"):
-                    if novo_flag == atual_flag:
-                        st.info("Nenhuma alteração detectada.")
+
+            with st.expander("Criar novo evento", expanded=False):
+                with st.form("admin_criar_evento"):
+                    data_nova = st.date_input("Data do evento", key="admin_novo_data")
+                    agenda_nova = st.text_input("Agenda/Descrição", key="admin_novo_agenda")
+                    local_novo = st.text_input("Local", value="", key="admin_novo_local") if "Local" in df_cal.columns else None
+                    prepara_novo = st.checkbox("Haverá preparação de Lanches?", value=True, key="admin_novo_prepara")
+                    submetido = st.form_submit_button("Criar evento")
+                if submetido:
+                    campos = {
+                        "Data": data_nova.strftime("%Y-%m-%d"),
+                        "Agenda": agenda_nova,
+                        "Haverá preparação de Lanches?": prepara_novo,
+                    }
+                    if local_novo is not None:
+                        campos["Local"] = local_novo
+                    try:
+                        api.table(BASE_ID, "Calendario").create(campos)
+                    except Exception as exc:
+                        st.error(f"Não consegui criar o evento: {exc}")
                     else:
+                        st.success("Evento criado com sucesso.")
+                        st.experimental_rerun()
+
+            with st.expander("Editar evento futuro", expanded=False):
+                if futuros.empty:
+                    st.info("Sem eventos futuros para atualizar.")
+                else:
+                    options = list(futuros.index)
+                    def _label(idx):
+                        row = futuros.loc[idx]
+                        data = row.get("__data")
+                        data_str = data.strftime("%d/%m/%Y") if pd.notna(data) else "Sem data"
+                        agenda = row.get("Agenda") or ""
+                        return f"{data_str} – {agenda}"
+                    evento_idx = st.selectbox(
+                        "Escolha o evento",
+                        options,
+                        format_func=_label,
+                        key="admin_evento_sel",
+                    )
+
+                    evento_id = futuros.loc[evento_idx, "id"]
+                    evento_row = futuros.loc[evento_idx]
+                    nova_data = st.date_input(
+                        "Data",
+                        value=evento_row.get("__data", hoje).date() if pd.notna(evento_row.get("__data")) else hoje.date(),
+                        key=f"admin_evento_data_{evento_id}",
+                    )
+                    nova_agenda = st.text_input(
+                        "Agenda/Descrição",
+                        value=evento_row.get("Agenda", ""),
+                        key=f"admin_evento_agenda_{evento_id}",
+                    )
+                    novo_local = None
+                    if "Local" in df_cal.columns:
+                        novo_local = st.text_input(
+                            "Local",
+                            value=evento_row.get("Local", ""),
+                            key=f"admin_evento_local_{evento_id}",
+                        )
+                    atual_flag = bool(evento_row.get("Haverá preparação de Lanches?"))
+                    novo_flag = st.checkbox(
+                        "Haverá preparação de Lanches?",
+                        value=atual_flag,
+                        key=f"admin_evento_flag_{evento_id}",
+                    )
+                    if st.button("Guardar alterações", key=f"admin_evento_guardar_{evento_id}"):
+                        campos_update = {
+                            "Data": nova_data.strftime("%Y-%m-%d"),
+                            "Agenda": nova_agenda,
+                            "Haverá preparação de Lanches?": novo_flag,
+                        }
+                        if novo_local is not None:
+                            campos_update["Local"] = novo_local
                         try:
-                            api.table(BASE_ID, "Calendario").update(evento_id, {"Haverá preparação de Lanches?": novo_flag})
+                            api.table(BASE_ID, "Calendario").update(evento_id, campos_update)
                         except Exception as exc:
                             st.error(f"Não consegui atualizar o evento: {exc}")
                         else:
                             st.success("Evento atualizado com sucesso.")
                             st.experimental_rerun()
-        else:
-            st.info("Atualização indisponível (sem coluna 'id').")
+
+            with st.expander("Cancelar evento", expanded=False):
+                if futuros.empty:
+                    st.info("Sem eventos futuros para cancelar.")
+                else:
+                    options = list(futuros.index)
+                    evento_idx = st.selectbox(
+                        "Escolha o evento para cancelar",
+                        options,
+                        format_func=lambda idx: futuros.loc[idx, "Agenda"] or futuros.loc[idx, "Data"],
+                        key="admin_evento_cancelar_sel",
+                    )
+                    evento_id = futuros.loc[evento_idx, "id"]
+                    if st.button("Cancelar evento", key=f"admin_evento_cancelar_{evento_id}"):
+                        try:
+                            api.table(BASE_ID, "Calendario").update(evento_id, {"Cancelado": True})
+                        except Exception as exc:
+                            st.error(f"Não consegui cancelar o evento: {exc}")
+                        else:
+                            st.success("Evento marcado como cancelado.")
+                            st.experimental_rerun()
 
     st.markdown("### 🧾 Registos recentes")
     col1, col2, col3 = st.columns(3)
