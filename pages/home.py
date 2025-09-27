@@ -656,8 +656,8 @@ def dashboard_admin(dados: dict):
 
     # 🔘 Barra de Ações
     acoes_admin = mostrar_barra_acoes([
-        ("📝 Novo Registo", "btn_novo_registo"),
-        ("📋 Novo Pedido", "btn_novo_pedido"),
+        ("📝 Cancelamento Forçado", "btn_novo_registo"),
+        ("📋 Novo Pedido Forçado", "btn_novo_pedido"),
     ])
 
     if acoes_admin.get("btn_novo_registo"):
@@ -668,7 +668,7 @@ def dashboard_admin(dados: dict):
     # Formulário: Novo Registo
     mostrar_formulario(
         session_key="mostrar_form_registo",
-        titulo="### 📍 Formulário de Novo Registo",
+        titulo="### 📍 Cancelar Lanche - Forçado",
         iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pagsw4PQrv9RaTdJS/form",
         iframe_height=533,
         container_height=600,
@@ -677,7 +677,7 @@ def dashboard_admin(dados: dict):
     # Formulário: Novo Pedido
     mostrar_formulario(
         session_key="mostrar_form_pedido",
-        titulo="### 📋 Formulário de Novo Pedido",
+        titulo="### 📋 Forçar Novo Pedido",
         iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form",
         iframe_height=533,
         container_height=600,
