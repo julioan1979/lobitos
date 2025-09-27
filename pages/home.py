@@ -654,30 +654,29 @@ def dashboard_tesoureiro(dados: dict):
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
 
-    # 🔘 Barra de Ações
-    acoes_admin = mostrar_barra_acoes([
-        ("📝 Cancelamento Forçado", "btn_novo_registo"),
-        ("📋 Novo Pedido Forçado", "btn_novo_pedido"),
-    ])
+    with st.container():
+        st.markdown("### 📝 Ações rápidas")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("- Cancelar lanche (forçado)")
+            if st.button("🚫 Abrir formulário", key="abrir_forcado_lanche", use_container_width=True):
+                st.session_state["mostrar_form_registo"] = True
+        with col2:
+            st.markdown("- Criar novo pedido (forçado)")
+            if st.button("🆕 Abrir formulário", key="abrir_forcado_pedido", use_container_width=True):
+                st.session_state["mostrar_form_pedido"] = True
 
-    if acoes_admin.get("btn_novo_registo"):
-        st.session_state["mostrar_form_registo"] = True
-    if acoes_admin.get("btn_novo_pedido"):
-        st.session_state["mostrar_form_pedido"] = True
-
-    # Formulário: Novo Registo
     mostrar_formulario(
         session_key="mostrar_form_registo",
-        titulo="### 📍 Cancelar Lanche - Forçado",
+        titulo="### 🗂️ Cancelamento de Lanche (Forçado)",
         iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pagsw4PQrv9RaTdJS/form",
         iframe_height=533,
         container_height=600,
     )
 
-    # Formulário: Novo Pedido
     mostrar_formulario(
         session_key="mostrar_form_pedido",
-        titulo="### 📋 Forçar Novo Pedido",
+        titulo="### 📝 Forçar Novo Pedido",
         iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form",
         iframe_height=533,
         container_height=600,
@@ -685,16 +684,130 @@ def dashboard_admin(dados: dict):
 
     st.divider()
 
-    # Listagem de tabelas (como já estava)
-    for nome, df in dados.items():
-        st.subheader(f"📂 {nome} ({len(df)} registos)")
-        if df.empty:
-            st.info("ℹ️ Sem registos.")
+    df_pedidos = dados.get("Pedidos", pd.DataFrame())
+    df_calendario = dados.get("Calendario", pd.DataFrame())
+    df_volunt = dados.get("Voluntariado Pais", pd.DataFrame())
+    df_receb = dados.get("Recebimento", pd.DataFrame())
+    df_esc = dados.get("Escuteiros", pd.DataFrame())
+
+    hoje = pd.Timestamp.today().normalize()
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    pendentes_cancel = 0
+    if not df_pedidos.empty:
+        if "Pendente de Cancelamento" in df_pedidos.columns:
+            pendentes_cancel = df_pedidos["Pendente de Cancelamento"].astype(str).str.lower().eq("true").sum()
+    with col1:
+        st.metric("Cancelamentos pendentes", int(pendentes_cancel))
+
+    eventos_proximos = 0
+    if not df_calendario.empty and "Data" in df_calendario.columns:
+        datas = pd.to_datetime(df_calendario["Data"], errors="coerce")
+        eventos_proximos = ((datas >= hoje) & (datas <= hoje + pd.Timedelta(days=14))).sum()
+    with col2:
+        st.metric("Eventos (próx. 14 dias)", int(eventos_proximos))
+
+    voluntariado_em_falta = 0
+    if not df_volunt.empty:
+        if "Pais" in df_volunt.columns:
+            voluntariado_em_falta = df_volunt["Pais"].isna().sum()
+        if "Cancelado" in df_volunt.columns:
+            voluntariado_em_falta = df_volunt[
+                (df_volunt["Pais"].isna()) & (~df_volunt["Cancelado"].astype(str).str.lower().eq("true"))
+            ].shape[0]
+    with col3:
+        st.metric("Turnos sem voluntário", int(voluntariado_em_falta))
+
+    escuteiros_sem_email = 0
+    if not df_esc.empty:
+        cols = [c for c in ["Email", "Email Alternativo"] if c in df_esc.columns]
+        if cols:
+            escuteiros_sem_email = df_esc[cols].fillna("").apply(lambda row: all(not str(v).strip() for v in row), axis=1).sum()
+    with col4:
+        st.metric("Escuteiros sem contacto", int(escuteiros_sem_email))
+
+    st.divider()
+
+    st.markdown("### ⚠️ Pedidos com pedidos de cancelamento")
+    if df_pedidos.empty or "Pendente de Cancelamento" not in df_pedidos.columns:
+        st.info("Nenhum pedido pendente.")
+    else:
+        df_pend = df_pedidos[df_pedidos["Pendente de Cancelamento"].astype(str).str.lower().eq("true")].copy()
+        if df_pend.empty:
+            st.info("Nenhum pedido pendente.")
         else:
+            cols = [c for c in ["Date", "Escuteiros", "Lanche", "Bebida", "Senha_marcações", "Cancelado?", "Pendente de Cancelamento"] if c in df_pend.columns]
+            df_pend = df_pend[cols]
+            if "Date" in df_pend.columns:
+                df_pend["Date"] = pd.to_datetime(df_pend["Date"], errors="coerce").dt.strftime("%d/%m/%Y")
+            st.dataframe(df_pend, use_container_width=True)
+
+    st.markdown("### 📅 Eventos sem voluntários")
+    if df_calendario.empty or df_volunt.empty:
+        st.info("Sem dados suficientes para cruzamento.")
+    else:
+        df_volunt_clean = df_volunt.copy()
+        if "Cancelado" in df_volunt_clean.columns:
+            df_volunt_clean = df_volunt_clean[~df_volunt_clean["Cancelado"].astype(str).str.lower().eq("true")]
+        if "Date (calendário)" in df_volunt_clean.columns:
+            eventos_com_vol = set()
+            for val in df_volunt_clean["Date (calendário)"].dropna():
+                if isinstance(val, list):
+                    eventos_com_vol.update(val)
+                else:
+                    eventos_com_vol.add(val)
+        else:
+            eventos_com_vol = set()
+
+        df_cal = df_calendario.copy()
+        if "id" in df_cal.columns:
+            df_cal["__tem_volunt"] = df_cal["id"].apply(lambda x: x in eventos_com_vol)
+            sem_vol = df_cal[(~df_cal["__tem_volunt"])]
+            if "Data" in sem_vol.columns:
+                sem_vol["Data"] = pd.to_datetime(sem_vol["Data"], errors="coerce")
+                sem_vol = sem_vol.sort_values("Data")
+                sem_vol["Data"] = sem_vol["Data"].dt.strftime("%d/%m/%Y")
+            cols = [c for c in ["Data", "Agenda", "Haverá preparação de Lanches?"] if c in sem_vol.columns]
+            if sem_vol.empty:
+                st.success("Todos os eventos têm voluntários associados.")
+            else:
+                st.dataframe(sem_vol[cols], use_container_width=True)
+        else:
+            st.info("Não foi possível cruzar eventos sem voluntários (sem coluna 'id').")
+
+    st.markdown("### 🧾 Registos recentes")
+    col1, col2, col3 = st.columns(3)
+    if not df_pedidos.empty and "Created" in df_pedidos.columns:
+        df_recent = df_pedidos.sort_values("Created", ascending=False).head(5)
+        cols = [c for c in ["Created", "Escuteiros", "Lanche", "Senha_marcações"] if c in df_recent.columns]
+        with col1:
+            st.caption("Pedidos")
+            st.dataframe(df_recent[cols], use_container_width=True, hide_index=True)
+    if not df_receb.empty and "Created" in df_receb.columns:
+        df_recent_rec = df_receb.sort_values("Created", ascending=False).head(5)
+        cols = [c for c in ["Created", "Nome do Escuteiro", "Valor Recebido", "Meio de Pagamento"] if c in df_recent_rec.columns]
+        with col2:
+            st.caption("Recebimentos")
+            st.dataframe(df_recent_rec[cols], use_container_width=True, hide_index=True)
+    if not df_esc.empty and "Created" in df_esc.columns:
+        df_recent_esc = df_esc.sort_values("Created", ascending=False).head(5)
+        cols = [c for c in ["Created", "Nome do Escuteiro", "Email", "Status Inativo"] if c in df_recent_esc.columns]
+        with col3:
+            st.caption("Escuteiros")
+            st.dataframe(df_recent_esc[cols], use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    with st.expander("Ver tabelas completas", expanded=False):
+        for nome, df in dados.items():
+            if df.empty:
+                continue
+            st.subheader(f"📑 {nome} ({len(df)} registos)")
             df_bruto = df.copy()
             for c in df_bruto.columns:
                 df_bruto[c] = df_bruto[c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
-            st.dataframe(df_bruto.head(20), use_container_width=True)
+            st.dataframe(df_bruto.head(200), use_container_width=True)
 
 
 # ======================
