@@ -187,14 +187,15 @@ def dashboard_pais():
     escuteiros_ids = df_escuteiros["id"].tolist()
     label_por_id = dict(zip(df_escuteiros["id"], df_escuteiros["__label"]))
 
-    if "escuteiro_selecionado" not in st.session_state or st.session_state["escuteiro_selecionado"] not in escuteiros_ids:
-        st.session_state["escuteiro_selecionado"] = escuteiros_ids[0]
+    sess_key = "escuteiro_selecionado"
+    if sess_key not in st.session_state or st.session_state[sess_key] not in escuteiros_ids:
+        st.session_state[sess_key] = escuteiros_ids[0]
 
     escuteiro_id = st.selectbox(
         "Escolha o Lobito",
         options=escuteiros_ids,
         format_func=lambda value: label_por_id.get(value, value),
-        key="escuteiro_selecionado",
+        key=sess_key,
     )
     escuteiro_nome = label_por_id.get(escuteiro_id, "")
     escuteiro_row = df_escuteiros[df_escuteiros["id"] == escuteiro_id].iloc[0]

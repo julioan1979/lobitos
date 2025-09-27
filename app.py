@@ -86,13 +86,22 @@ if st.button("Entrar 🚀"):
                 if not correspondencias:
                     st.error("Senha incorreta.")
                 else:
-                    role = _determinar_role(registos)
-                    escuteiros_ids = [r["id"] for r in registos]
-                    nomes_escuteiros = [
-                        r.get("fields", {}).get("Nome do Escuteiro")
-                        for r in registos
-                        if _campo_com_conteudo(r.get("fields", {}).get("Nome do Escuteiro"))
-                    ]
+                    role = _determinar_role(correspondencias)
+
+                    if role in {"tesoureiro", "admin"}:
+                        escuteiros_ids = [r["id"] for r in registos]
+                        nomes_escuteiros = [
+                            r.get("fields", {}).get("Nome do Escuteiro")
+                            for r in registos
+                            if _campo_com_conteudo(r.get("fields", {}).get("Nome do Escuteiro"))
+                        ]
+                    else:
+                        escuteiros_ids = [r["id"] for r in correspondencias]
+                        nomes_escuteiros = [
+                            r.get("fields", {}).get("Nome do Escuteiro")
+                            for r in correspondencias
+                            if _campo_com_conteudo(r.get("fields", {}).get("Nome do Escuteiro"))
+                        ]
 
                     st.session_state["role"] = role
                     st.session_state["logged_in"] = True
