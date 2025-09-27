@@ -30,6 +30,8 @@ role = st.session_state.get("role")
 user_info = st.session_state.get("user", {})
 allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else set()
 
+st.session_state["debug_pedidos"] = st.sidebar.checkbox("Debug pedidos", value=st.session_state.get("debug_pedidos", False))
+
 if role is None:
     st.stop()
 
@@ -70,7 +72,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
     for nome in lista_tabelas:
         try:
             tbl = api.table(base_id, nome)
-            records = tbl.all(max_records=200)
+            records = tbl.all()
             rows = [{"id": r["id"], **r["fields"]} for r in records]
             dados[nome] = pd.DataFrame(rows)
             time.sleep(0.25)  # evitar limite 5 requests/s
@@ -302,6 +304,11 @@ def dashboard_pais():
             else:
                 pedidos_escuteiro["__data"] = pd.NaT
             pedidos_escuteiro = pedidos_escuteiro.sort_values("__data", ascending=False)
+
+    if st.session_state.get("debug_pedidos", False):
+        with st.expander("Debug pedidos", expanded=False):
+            preview_cols = [c for c in ["Date", "Created", "__data", "Escuteiros"] if c in pedidos_escuteiro.columns]
+            st.dataframe(pedidos_escuteiro[preview_cols].head(10), use_container_width=True)
 
     st.subheader("📖 Últimos pedidos")
     if pedidos_escuteiro.empty:
