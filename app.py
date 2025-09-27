@@ -75,10 +75,14 @@ if st.button("Entrar 🚀"):
             if not registos:
                 st.error("Não encontrei escuteiros associados a este email.")
             else:
-                correspondencias = [
-                    r for r in registos
-                    if r.get("fields", {}).get("Senha_Painel") == senha_input
-                ]
+                correspondencias = []
+                for r in registos:
+                    campos = r.get("fields", {})
+                    senha_registo = campos.get("Senha_Painel")
+                    if senha_registo is None:
+                        continue
+                    if str(senha_registo).strip() == senha_input.strip():
+                        correspondencias.append(r)
                 if not correspondencias:
                     st.error("Senha incorreta.")
                 else:
