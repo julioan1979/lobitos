@@ -792,6 +792,8 @@ def dashboard_admin(dados: dict):
             sem_vol = sem_vol.sort_values("__data")
             if not sem_vol.empty:
                 sem_vol["Data"] = sem_vol["__data"].dt.strftime("%d/%m/%Y")
+                if "Haverá preparação de Lanches?" in sem_vol.columns:
+                    sem_vol["Haverá preparação de Lanches?"] = sem_vol["Haverá preparação de Lanches?"].map({True: "Sim", False: "Não"}).fillna("–")
                 cols = [c for c in ["Data", "Agenda", "Haverá preparação de Lanches?", "Local"] if c in sem_vol.columns]
                 st.dataframe(sem_vol[cols], use_container_width=True, hide_index=True)
             else:
@@ -853,9 +855,16 @@ def dashboard_admin(dados: dict):
 
                     evento_id = futuros.loc[evento_idx, "id"]
                     evento_row = futuros.loc[evento_idx]
+                    valor_data = evento_row.get("__data")
+                    if pd.isna(valor_data):
+                        bruto = evento_row.get("Data")
+                        try:
+                            valor_data = pd.to_datetime(bruto)
+                        except Exception:
+                            valor_data = hoje
                     nova_data = st.date_input(
                         "Data",
-                        value=evento_row.get("__data", hoje).date() if pd.notna(evento_row.get("__data")) else hoje.date(),
+                        value=valor_data.date() if pd.notna(valor_data) else hoje.date(),
                         key=f"admin_evento_data_{evento_id}",
                     )
                     nova_agenda = st.text_input(
@@ -904,14 +913,22 @@ def dashboard_admin(dados: dict):
                         key="admin_evento_cancelar_sel",
                     )
                     evento_id = futuros.loc[evento_idx, "id"]
+                    cancel_field = None
+                    for cand in ["Cancelado", "Cancelado?", "Cancelado"]:
+                        if cand in df_cal.columns:
+                            cancel_field = cand
+                            break
                     if st.button("Cancelar evento", key=f"admin_evento_cancelar_{evento_id}"):
-                        try:
-                            api.table(BASE_ID, "Calendario").update(evento_id, {"Cancelado": True})
-                        except Exception as exc:
-                            st.error(f"Não consegui cancelar o evento: {exc}")
+                        if cancel_field is None:
+                            st.warning("A tabela Calendario não tem um campo de cancelamento configurado.")
                         else:
-                            st.success("Evento marcado como cancelado.")
-                            st.experimental_rerun()
+                            try:
+                                api.table(BASE_ID, "Calendario").update(evento_id, {cancel_field: True})
+                            except Exception as exc:
+                                st.error(f"Não consegui cancelar o evento: {exc}")
+                            else:
+                                st.success("Evento marcado como cancelado.")
+                                st.experimental_rerun()
 
     st.markdown("### 🧾 Registos recentes")
     col1, col2, col3 = st.columns(3)
