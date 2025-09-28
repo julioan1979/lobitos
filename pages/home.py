@@ -805,6 +805,17 @@ def dashboard_admin(dados: dict):
         else:
             futuros = df_cal[df_cal["__data"].notna() & (df_cal["__data"] >= hoje)].sort_values("__data")
 
+            def _format_evento(idx):
+                row = futuros.loc[idx]
+                data = row.get("__data")
+                if pd.notna(data):
+                    data_str = data.strftime("%d/%m/%Y")
+                else:
+                    data_raw = row.get("Data")
+                    data_str = data_raw if isinstance(data_raw, str) and data_raw else "Sem data"
+                agenda = row.get("Agenda") or ""
+                return f"{data_str} – {agenda}" if agenda else data_str
+
             with st.expander("Criar novo evento", expanded=False):
                 with st.form("admin_criar_evento"):
                     data_nova = st.date_input("Data do evento", key="admin_novo_data")
@@ -833,16 +844,10 @@ def dashboard_admin(dados: dict):
                     st.info("Sem eventos futuros para atualizar.")
                 else:
                     options = list(futuros.index)
-                    def _label(idx):
-                        row = futuros.loc[idx]
-                        data = row.get("__data")
-                        data_str = data.strftime("%d/%m/%Y") if pd.notna(data) else "Sem data"
-                        agenda = row.get("Agenda") or ""
-                        return f"{data_str} – {agenda}"
                     evento_idx = st.selectbox(
                         "Escolha o evento",
                         options,
-                        format_func=_label,
+                        format_func=_format_evento,
                         key="admin_evento_sel",
                     )
 
@@ -895,7 +900,7 @@ def dashboard_admin(dados: dict):
                     evento_idx = st.selectbox(
                         "Escolha o evento para cancelar",
                         options,
-                        format_func=lambda idx: futuros.loc[idx, "Agenda"] or futuros.loc[idx, "Data"],
+                        format_func=_format_evento,
                         key="admin_evento_cancelar_sel",
                     )
                     evento_id = futuros.loc[evento_idx, "id"]
