@@ -920,7 +920,11 @@ def dashboard_admin(dados: dict):
                     )
                     evento_id = futuros.loc[evento_idx, "id"]
                     evento_row = futuros.loc[evento_idx]
-                    agenda_original = evento_row.get("Agenda") or ""
+                    agenda_val = evento_row.get("Agenda")
+                    if isinstance(agenda_val, str):
+                        agenda_original = agenda_val.strip()
+                    else:
+                        agenda_original = ""
                     if agenda_original.startswith("[CANCELADO]"):
                         agenda_cancelada = agenda_original
                     elif agenda_original:
