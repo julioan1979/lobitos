@@ -663,6 +663,10 @@ def dashboard_tesoureiro(dados: dict):
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
 
+    def refrescar_dados():
+        st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
+        st.session_state["last_update"] = datetime.now()
+
     st.markdown("### 📝 Ações rápidas")
     acoes_admin = mostrar_barra_acoes([
         ("🚫 Cancelar lanche (forçado)", "btn_admin_cancelar"),
@@ -839,6 +843,7 @@ def dashboard_admin(dados: dict):
                         st.error(f"Não consegui criar o evento: {exc}")
                     else:
                         st.success("Evento criado com sucesso.")
+                        refrescar_dados()
                         st.rerun()
 
             with st.expander("Editar evento futuro", expanded=False):
@@ -899,6 +904,7 @@ def dashboard_admin(dados: dict):
                             st.error(f"Não consegui atualizar o evento: {exc}")
                         else:
                             st.success("Evento atualizado com sucesso.")
+                            refrescar_dados()
                             st.rerun()
 
             with st.expander("Cancelar evento", expanded=False):
@@ -928,6 +934,7 @@ def dashboard_admin(dados: dict):
                                 st.error(f"Não consegui cancelar o evento: {exc}")
                             else:
                                 st.success("Evento marcado como cancelado.")
+                                refrescar_dados()
                                 st.rerun()
 
     st.markdown("### 🧾 Registos recentes")
