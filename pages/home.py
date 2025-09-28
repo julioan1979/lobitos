@@ -919,23 +919,31 @@ def dashboard_admin(dados: dict):
                         key="admin_evento_cancelar_sel",
                     )
                     evento_id = futuros.loc[evento_idx, "id"]
+                    evento_row = futuros.loc[evento_idx]
+                    agenda_original = evento_row.get("Agenda") or ""
+                    if agenda_original.startswith("[CANCELADO]"):
+                        agenda_cancelada = agenda_original
+                    elif agenda_original:
+                        agenda_cancelada = f"[CANCELADO] {agenda_original}"
+                    else:
+                        agenda_cancelada = "CANCELADO"
                     cancel_field = None
-                    for cand in ["Cancelado", "Cancelado?", "Cancelado"]:
+                    for cand in ["Cancelado", "Cancelado?"]:
                         if cand in df_cal.columns:
                             cancel_field = cand
                             break
                     if st.button("Cancelar evento", key=f"admin_evento_cancelar_{evento_id}"):
-                        if cancel_field is None:
-                            st.warning("A tabela Calendario não tem um campo de cancelamento configurado.")
+                        payload = {"Agenda": agenda_cancelada, "Haverá preparação de Lanches?": False}
+                        if cancel_field is not None:
+                            payload[cancel_field] = True
+                        try:
+                            api.table(BASE_ID, "Calendario").update(evento_id, payload)
+                        except Exception as exc:
+                            st.error(f"Não consegui cancelar o evento: {exc}")
                         else:
-                            try:
-                                api.table(BASE_ID, "Calendario").update(evento_id, {cancel_field: True})
-                            except Exception as exc:
-                                st.error(f"Não consegui cancelar o evento: {exc}")
-                            else:
-                                st.success("Evento marcado como cancelado.")
-                                refrescar_dados()
-                                st.rerun()
+                            st.success("Evento marcado como cancelado.")
+                            refrescar_dados()
+                            st.rerun()
 
     st.markdown("### 🧾 Registos recentes")
     col1, col2, col3 = st.columns(3)
