@@ -839,7 +839,7 @@ def dashboard_admin(dados: dict):
                         st.error(f"Não consegui criar o evento: {exc}")
                     else:
                         st.success("Evento criado com sucesso.")
-                        st.experimental_rerun()
+                        st.rerun()
 
             with st.expander("Editar evento futuro", expanded=False):
                 if futuros.empty:
@@ -899,7 +899,7 @@ def dashboard_admin(dados: dict):
                             st.error(f"Não consegui atualizar o evento: {exc}")
                         else:
                             st.success("Evento atualizado com sucesso.")
-                            st.experimental_rerun()
+                            st.rerun()
 
             with st.expander("Cancelar evento", expanded=False):
                 if futuros.empty:
@@ -928,7 +928,7 @@ def dashboard_admin(dados: dict):
                                 st.error(f"Não consegui cancelar o evento: {exc}")
                             else:
                                 st.success("Evento marcado como cancelado.")
-                                st.experimental_rerun()
+                                st.rerun()
 
     st.markdown("### 🧾 Registos recentes")
     col1, col2, col3 = st.columns(3)
