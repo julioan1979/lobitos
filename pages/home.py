@@ -792,162 +792,207 @@ def dashboard_admin(dados: dict):
 
         if "id" in df_cal.columns:
             df_cal["__tem_volunt"] = df_cal["id"].apply(lambda x: x in eventos_com_vol)
-            sem_vol = df_cal[~df_cal["__tem_volunt"] & (df_cal["__data"] >= hoje)].copy()
+            sem_vol = df_cal[(df_cal["__data"] >= hoje) & (~df_cal["__tem_volunt"])].copy()
             sem_vol = sem_vol.sort_values("__data")
-            if not sem_vol.empty:
+            if sem_vol.empty:
+                st.success("Todos os eventos futuros têm voluntários associados.")
+            else:
                 sem_vol["Data"] = sem_vol["__data"].dt.strftime("%d/%m/%Y")
+                if "Agenda" not in sem_vol.columns:
+                    sem_vol["Agenda"] = ""
+                else:
+                    sem_vol["Agenda"] = sem_vol["Agenda"].fillna("")
                 if "Haverá preparação de Lanches?" in sem_vol.columns:
                     sem_vol["Haverá preparação de Lanches?"] = sem_vol["Haverá preparação de Lanches?"].map({True: "Sim", False: "Não"}).fillna("–")
                 cols = [c for c in ["Data", "Agenda", "Haverá preparação de Lanches?", "Local"] if c in sem_vol.columns]
                 st.dataframe(sem_vol[cols], use_container_width=True, hide_index=True)
-            else:
-                st.success("Todos os eventos futuros têm voluntários associados.")
         else:
             st.info("Não foi possível cruzar eventos sem voluntários (sem coluna 'id').")
 
-        st.markdown("#### Gestão de eventos e lanches")
-        if "id" not in df_cal.columns:
-            st.info("Gestão indisponível (sem coluna 'id' no calendário).")
+    st.markdown("#### Gestão de eventos e lanches")
+    if "id" not in df_calendario.columns:
+        st.info("Gestão indisponível (sem coluna 'id' no calendário).")
+    else:
+        df_cal_full = df_calendario.copy()
+        df_cal_full["__data"] = pd.to_datetime(df_cal_full.get("Data"), errors="coerce")
+        futuros = df_cal_full[df_cal_full["__data"].notna() & (df_cal_full["__data"] >= hoje)].sort_values("__data")
+
+        def _format_evento(idx):
+            row = futuros.loc[idx]
+            data = row.get("__data")
+            if pd.notna(data):
+                data_str = data.strftime("%d/%m/%Y")
+            else:
+                data_raw = row.get("Data")
+                data_str = data_raw if isinstance(data_raw, str) and data_raw else "Sem data"
+            agenda = row.get("Agenda") or ""
+            return f"{data_str} – {agenda}" if agenda else data_str
+
+        with st.expander("Criar novo evento", expanded=False):
+            with st.form("admin_criar_evento"):
+                data_nova = st.date_input("Data do evento", key="admin_novo_data")
+                agenda_nova = st.text_input("Agenda/Descrição", key="admin_novo_agenda")
+                local_novo = st.text_input("Local", value="", key="admin_novo_local") if "Local" in df_cal_full.columns else None
+                prepara_novo = st.checkbox("Haverá preparação de Lanches?", value=True, key="admin_novo_prepara")
+                submetido = st.form_submit_button("Criar evento")
+            if submetido:
+                campos = {
+                    "Data": data_nova.strftime("%Y-%m-%d"),
+                    "Agenda": agenda_nova,
+                    "Haverá preparação de Lanches?": prepara_novo,
+                }
+                if local_novo is not None:
+                    campos["Local"] = local_novo
+                try:
+                    api.table(BASE_ID, "Calendario").create(campos)
+                except Exception as exc:
+                    st.error(f"Não consegui criar o evento: {exc}")
+                else:
+                    st.success("Evento criado com sucesso.")
+                    refrescar_dados()
+                    st.rerun()
+
+        st.markdown("##### Editar / cancelar eventos futuros")
+        if futuros.empty:
+            st.info("Sem eventos futuros para editar.")
         else:
-            futuros = df_cal[df_cal["__data"].notna() & (df_cal["__data"] >= hoje)].sort_values("__data")
+            df_manage = futuros.copy()
+            df_manage["ID"] = df_manage["id"]
+            df_manage["Data"] = df_manage["__data"].dt.date
+            df_manage["_agenda_raw"] = df_manage.get("Agenda", "").fillna("")
 
-            def _format_evento(idx):
-                row = futuros.loc[idx]
-                data = row.get("__data")
-                if pd.notna(data):
-                    data_str = data.strftime("%d/%m/%Y")
-                else:
-                    data_raw = row.get("Data")
-                    data_str = data_raw if isinstance(data_raw, str) and data_raw else "Sem data"
-                agenda = row.get("Agenda") or ""
-                return f"{data_str} – {agenda}" if agenda else data_str
+            def _limpar_agenda(valor: str) -> str:
+                if isinstance(valor, str) and valor.strip().startswith("[CANCELADO]"):
+                    return valor.replace("[CANCELADO]", "", 1).strip()
+                return valor or ""
 
-            with st.expander("Criar novo evento", expanded=False):
-                with st.form("admin_criar_evento"):
-                    data_nova = st.date_input("Data do evento", key="admin_novo_data")
-                    agenda_nova = st.text_input("Agenda/Descrição", key="admin_novo_agenda")
-                    local_novo = st.text_input("Local", value="", key="admin_novo_local") if "Local" in df_cal.columns else None
-                    prepara_novo = st.checkbox("Haverá preparação de Lanches?", value=True, key="admin_novo_prepara")
-                    submetido = st.form_submit_button("Criar evento")
-                if submetido:
-                    campos = {
-                        "Data": data_nova.strftime("%Y-%m-%d"),
-                        "Agenda": agenda_nova,
-                        "Haverá preparação de Lanches?": prepara_novo,
-                    }
-                    if local_novo is not None:
-                        campos["Local"] = local_novo
-                    try:
-                        api.table(BASE_ID, "Calendario").create(campos)
-                    except Exception as exc:
-                        st.error(f"Não consegui criar o evento: {exc}")
-                    else:
-                        st.success("Evento criado com sucesso.")
-                        refrescar_dados()
-                        st.rerun()
+            df_manage["Agenda"] = df_manage["_agenda_raw"].apply(_limpar_agenda)
+            col_local = "Local" if "Local" in df_manage.columns else None
+            if "Haverá preparação de Lanches?" in df_manage.columns:
+                df_manage["Preparação"] = df_manage["Haverá preparação de Lanches?"].fillna(False).astype(bool)
+            else:
+                df_manage["Preparação"] = False
+            df_manage["Estado"] = df_manage["_agenda_raw"].apply(lambda txt: "Cancelado" if isinstance(txt, str) and txt.strip().startswith("[CANCELADO]") else "Ativo")
 
-            with st.expander("Editar evento futuro", expanded=False):
-                if futuros.empty:
-                    st.info("Sem eventos futuros para atualizar.")
-                else:
-                    options = list(futuros.index)
-                    evento_idx = st.selectbox(
-                        "Escolha o evento",
-                        options,
-                        format_func=_format_evento,
-                        key="admin_evento_sel",
-                    )
+            display_cols = ["ID", "Data", "Agenda"]
+            if col_local:
+                display_cols.append(col_local)
+            display_cols += ["Preparação", "Estado"]
+            df_display = df_manage[display_cols].copy()
+            rename_map = {"ID": "ID", "Agenda": "Agenda", "Preparação": "Preparação", "Estado": "Estado"}
+            if col_local:
+                rename_map[col_local] = "Local"
+                df_display = df_display.rename(columns=rename_map)
+            else:
+                df_display = df_display.rename(columns={"Agenda": "Agenda", "Preparação": "Preparação", "Estado": "Estado"})
 
-                    evento_id = futuros.loc[evento_idx, "id"]
-                    evento_row = futuros.loc[evento_idx]
-                    valor_data = evento_row.get("__data")
-                    if pd.isna(valor_data):
-                        bruto = evento_row.get("Data")
+            column_config = {
+                "ID": st.column_config.Column("ID", disabled=True, width="small"),
+                "Data": st.column_config.DateColumn("Data", format="YYYY-MM-DD"),
+                "Agenda": st.column_config.TextColumn("Agenda/Descrição"),
+                "Preparação": st.column_config.CheckboxColumn("Preparação de Lanches?"),
+                "Estado": st.column_config.SelectboxColumn("Estado", options=["Ativo", "Cancelado"]),
+            }
+            if "Local" in df_display.columns:
+                column_config["Local"] = st.column_config.TextColumn("Local")
+
+            editado = st.data_editor(
+                df_display,
+                use_container_width=True,
+                hide_index=True,
+                num_rows="fixed",
+                column_config=column_config,
+                key="admin_event_editor",
+            )
+
+            if st.button("Guardar alterações da tabela", key="admin_event_table_save"):
+                edited_records = editado.to_dict("records")
+                original_records = df_display.to_dict("records")
+                original_map = {str(rec.get("ID")): rec for rec in original_records if rec.get("ID")}
+
+                def _normalize_id(value):
+                    if value is None:
+                        return None
+                    if isinstance(value, float) and pd.isna(value):
+                        return None
+                    value = str(value).strip()
+                    return value or None
+
+                def _to_iso(value):
+                    if isinstance(value, pd.Timestamp):
+                        return value.strftime("%Y-%m-%d")
+                    if hasattr(value, "isoformat"):
+                        return value.isoformat()
+                    if isinstance(value, str) and value:
                         try:
-                            valor_data = pd.to_datetime(bruto)
+                            return pd.to_datetime(value).strftime("%Y-%m-%d")
                         except Exception:
-                            valor_data = hoje
-                    nova_data = st.date_input(
-                        "Data",
-                        value=valor_data.date() if pd.notna(valor_data) else hoje.date(),
-                        key=f"admin_evento_data_{evento_id}",
-                    )
-                    nova_agenda = st.text_input(
-                        "Agenda/Descrição",
-                        value=evento_row.get("Agenda", ""),
-                        key=f"admin_evento_agenda_{evento_id}",
-                    )
-                    novo_local = None
-                    if "Local" in df_cal.columns:
-                        novo_local = st.text_input(
-                            "Local",
-                            value=evento_row.get("Local", ""),
-                            key=f"admin_evento_local_{evento_id}",
-                        )
-                    atual_flag = bool(evento_row.get("Haverá preparação de Lanches?"))
-                    novo_flag = st.checkbox(
-                        "Haverá preparação de Lanches?",
-                        value=atual_flag,
-                        key=f"admin_evento_flag_{evento_id}",
-                    )
-                    if st.button("Guardar alterações", key=f"admin_evento_guardar_{evento_id}"):
-                        campos_update = {
-                            "Data": nova_data.strftime("%Y-%m-%d"),
-                            "Agenda": nova_agenda,
-                            "Haverá preparação de Lanches?": novo_flag,
-                        }
-                        if novo_local is not None:
-                            campos_update["Local"] = novo_local
-                        try:
-                            api.table(BASE_ID, "Calendario").update(evento_id, campos_update)
-                        except Exception as exc:
-                            st.error(f"Não consegui atualizar o evento: {exc}")
-                        else:
-                            st.success("Evento atualizado com sucesso.")
-                            refrescar_dados()
-                            st.rerun()
+                            return None
+                    return None
 
-            with st.expander("Cancelar evento", expanded=False):
-                if futuros.empty:
-                    st.info("Sem eventos futuros para cancelar.")
+                atualizados = 0
+                tbl_cal = api.table(BASE_ID, "Calendario")
+
+                for row in edited_records:
+                    event_id = _normalize_id(row.get("ID"))
+                    if not event_id:
+                        continue
+                    original = original_map.get(event_id)
+                    if original is None:
+                        continue
+
+                    campos_update = {}
+                    iso_novo = _to_iso(row.get("Data"))
+                    iso_original = _to_iso(original.get("Data"))
+                    if iso_novo and iso_novo != iso_original:
+                        campos_update["Data"] = iso_novo
+
+                    estado_novo = row.get("Estado", "Ativo") or "Ativo"
+                    agenda_nova = (row.get("Agenda") or "").strip()
+                    if estado_novo == "Cancelado":
+                        if not agenda_nova:
+                            agenda_nova = "CANCELADO"
+                        if not agenda_nova.startswith("[CANCELADO]"):
+                            agenda_nova = f"[CANCELADO] {agenda_nova}".strip()
+                    else:
+                        if agenda_nova.startswith("[CANCELADO]"):
+                            agenda_nova = agenda_nova.replace("[CANCELADO]", "", 1).strip()
+
+                    agenda_original = df_manage.loc[df_manage["ID"] == event_id, "_agenda_raw"].iloc[0] if event_id in df_manage["ID"].values else ""
+                    if agenda_nova != (agenda_original or ""):
+                        campos_update["Agenda"] = agenda_nova
+
+                    prep_novo = bool(row.get("Preparação", False))
+                    prep_original = bool(df_manage.loc[df_manage["ID"] == event_id, "Preparação"].iloc[0]) if event_id in df_manage["ID"].values else False
+                    if estado_novo == "Cancelado":
+                        if prep_original or "Haverá preparação de Lanches?" not in campos_update and prep_original != False:
+                            campos_update["Haverá preparação de Lanches?"] = False
+                    else:
+                        if prep_novo != prep_original:
+                            campos_update["Haverá preparação de Lanches?"] = prep_novo
+
+                    if "Local" in row:
+                        local_novo = row.get("Local", "")
+                        local_original = df_manage.loc[df_manage["ID"] == event_id, "Local"].iloc[0] if (col_local and event_id in df_manage["ID"].values) else ""
+                        if (local_novo or "") != (local_original or ""):
+                            campos_update["Local"] = local_novo
+
+                    if not campos_update:
+                        continue
+
+                    try:
+                        tbl_cal.update(event_id, campos_update)
+                    except Exception as exc:
+                        st.error(f"Não consegui atualizar o evento {event_id}: {exc}")
+                    else:
+                        atualizados += 1
+
+                if atualizados:
+                    st.success(f"{atualizados} evento(s) atualizados com sucesso.")
+                    refrescar_dados()
+                    st.rerun()
                 else:
-                    options = list(futuros.index)
-                    evento_idx = st.selectbox(
-                        "Escolha o evento para cancelar",
-                        options,
-                        format_func=_format_evento,
-                        key="admin_evento_cancelar_sel",
-                    )
-                    evento_id = futuros.loc[evento_idx, "id"]
-                    evento_row = futuros.loc[evento_idx]
-                    agenda_val = evento_row.get("Agenda")
-                    if isinstance(agenda_val, str):
-                        agenda_original = agenda_val.strip()
-                    else:
-                        agenda_original = ""
-                    if agenda_original.startswith("[CANCELADO]"):
-                        agenda_cancelada = agenda_original
-                    elif agenda_original:
-                        agenda_cancelada = f"[CANCELADO] {agenda_original}"
-                    else:
-                        agenda_cancelada = "CANCELADO"
-                    cancel_field = None
-                    for cand in ["Cancelado", "Cancelado?"]:
-                        if cand in df_cal.columns:
-                            cancel_field = cand
-                            break
-                    if st.button("Cancelar evento", key=f"admin_evento_cancelar_{evento_id}"):
-                        payload = {"Agenda": agenda_cancelada, "Haverá preparação de Lanches?": False}
-                        if cancel_field is not None:
-                            payload[cancel_field] = True
-                        try:
-                            api.table(BASE_ID, "Calendario").update(evento_id, payload)
-                        except Exception as exc:
-                            st.error(f"Não consegui cancelar o evento: {exc}")
-                        else:
-                            st.success("Evento marcado como cancelado.")
-                            refrescar_dados()
-                            st.rerun()
+                    st.info("Nenhuma alteração para guardar.")
 
     st.markdown("### 🧾 Registos recentes")
     col1, col2, col3 = st.columns(3)
