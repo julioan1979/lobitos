@@ -671,7 +671,6 @@ def dashboard_admin(dados: dict):
     acoes_admin = mostrar_barra_acoes([
         ("🚫 Cancelar lanche (forçado)", "btn_admin_cancelar"),
         ("📝 Novo pedido (forçado)", "btn_admin_pedido"),
-        ("🗑️ Apagar evento", "btn_admin_delete"),
     ])
     st.caption("Use estas ações apenas em casos excecionais; os formulários abrem em modo forçado.")
 
@@ -679,9 +678,6 @@ def dashboard_admin(dados: dict):
         st.session_state["mostrar_form_registo"] = True
     if acoes_admin.get("btn_admin_pedido"):
         st.session_state["mostrar_form_pedido"] = True
-
-    if acoes_admin.get("btn_admin_delete"):
-        st.session_state["modo_apagar_evento"] = not st.session_state.get("modo_apagar_evento", False)
 
     mostrar_formulario(
         session_key="mostrar_form_registo",
@@ -885,11 +881,12 @@ def dashboard_admin(dados: dict):
             else:
                 df_manage["Preparação"] = False
             df_manage["Estado"] = df_manage["_agenda_raw"].apply(lambda txt: "Cancelado" if isinstance(txt, str) and txt.strip().startswith("[CANCELADO]") else "Ativo")
+            df_manage["Apagar"] = False
 
             display_cols = ["Data", "Dia da semana", "Semana", "Agenda"]
             if col_local:
                 display_cols.append(col_local)
-            display_cols += ["Preparação", "Estado", "ID"]
+            display_cols += ["Preparação", "Estado", "Apagar", "ID"]
             df_display = df_manage[display_cols].copy()
             rename_map = {
                 "Data": "Data",
@@ -898,6 +895,7 @@ def dashboard_admin(dados: dict):
                 "Agenda": "Agenda",
                 "Preparação": "Preparação",
                 "Estado": "Estado",
+                "Apagar": "Apagar",
                 "ID": "ID",
             }
             if col_local:
@@ -911,14 +909,13 @@ def dashboard_admin(dados: dict):
                 "Agenda": st.column_config.TextColumn("Agenda/Descrição"),
                 "Preparação": st.column_config.CheckboxColumn("Preparação de Lanches?"),
                 "Estado": st.column_config.SelectboxColumn("Estado", options=["Ativo", "Cancelado"]),
+                "Apagar": st.column_config.CheckboxColumn("Apagar"),
+                "ID": st.column_config.Column("ID", disabled=True, width="small"),
             }
             if "Local" in df_display.columns:
                 column_config["Local"] = st.column_config.TextColumn("Local")
-            column_config["ID"] = st.column_config.Column("ID", disabled=True, width="small")
 
-            modo_apagar = st.session_state.get("modo_apagar_evento", False)
-            if modo_apagar:
-                st.warning("Modo apagar ativo: remova a linha correspondente na tabela e clique em 'Guardar alterações da tabela'. Apenas eventos sem voluntários associados podem ser eliminados.")
+            st.caption("Marque 'Apagar' para remover um evento sem voluntários associados e clique em 'Guardar alterações da tabela'.")
 
             editado = st.data_editor(
                 df_display,
@@ -928,7 +925,6 @@ def dashboard_admin(dados: dict):
                 key="admin_event_editor",
             )
             if st.button("Guardar alterações da tabela", key="admin_event_table_save"):
-                modo_apagar = st.session_state.get("modo_apagar_evento", False)
                 edited_records = editado.to_dict("records")
                 original_records = df_display.to_dict("records")
 
@@ -952,26 +948,23 @@ def dashboard_admin(dados: dict):
                             return None
                     return None
 
-                original_ids = set()
                 original_map = {}
                 for rec in original_records:
                     norm_id = _normalize_id(rec.get("ID"))
                     if norm_id:
-                        original_ids.add(norm_id)
                         original_map[norm_id] = rec
-
-                edited_ids = set()
-                for row in edited_records:
-                    norm_id = _normalize_id(row.get("ID"))
-                    if norm_id:
-                        edited_ids.add(norm_id)
-
-                removed_ids = original_ids - edited_ids
 
                 atualizados = 0
                 removidos = 0
                 bloqueados = []
                 tbl_cal = api.table(BASE_ID, "Calendario")
+
+                def _tem_voluntarios(evento_id: str) -> bool:
+                    if df_volunt.empty or "Date (calendário)" not in df_volunt.columns:
+                        return False
+                    return df_volunt["Date (calendário)"].apply(
+                        lambda v: evento_id in v if isinstance(v, list) else v == evento_id
+                    ).any()
 
                 for row in edited_records:
                     event_id = _normalize_id(row.get("ID"))
@@ -979,6 +972,18 @@ def dashboard_admin(dados: dict):
                         continue
                     original = original_map.get(event_id)
                     if original is None:
+                        continue
+
+                    if row.get("Apagar"):
+                        if _tem_voluntarios(event_id):
+                            bloqueados.append((event_id, "Existe voluntariado associado"))
+                            continue
+                        try:
+                            tbl_cal.delete(event_id)
+                        except Exception as exc:
+                            st.error(f"Não consegui apagar o evento {event_id}: {exc}")
+                        else:
+                            removidos += 1
                         continue
 
                     campos_update = {}
@@ -1023,30 +1028,6 @@ def dashboard_admin(dados: dict):
                         st.error(f"Não consegui atualizar o evento {event_id}: {exc}")
                     else:
                         atualizados += 1
-
-                if removed_ids:
-                    def _tem_voluntarios(evento_id: str) -> bool:
-                        if df_volunt.empty or "Date (calendário)" not in df_volunt.columns:
-                            return False
-                        return df_volunt["Date (calendário)"].apply(
-                            lambda v: evento_id in v if isinstance(v, list) else v == evento_id
-                        ).any()
-
-                    if not modo_apagar:
-                        bloqueados.extend((rid, "Modo apagar desligado") for rid in removed_ids)
-                    else:
-                        for rid in removed_ids:
-                            if _tem_voluntarios(rid):
-                                bloqueados.append((rid, "Existe voluntariado associado"))
-                                continue
-                            try:
-                                tbl_cal.delete(rid)
-                            except Exception as exc:
-                                st.error(f"Não consegui apagar o evento {rid}: {exc}")
-                            else:
-                                removidos += 1
-                        if removidos:
-                            st.session_state["modo_apagar_evento"] = False
 
                 if atualizados or removidos:
                     mensagens = []
