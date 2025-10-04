@@ -22,6 +22,3 @@ config.toml
 # Sistema
 .DS_Store
 Thumbs.db
-
-# Containers de desenvolvimento
-.devcontainer/
