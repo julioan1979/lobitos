@@ -61,28 +61,23 @@ else:
             return ""
         return ", ".join(dict.fromkeys(nomes))
 
-    if futuros_requer_prep.empty:
-        st.info("Não existem lanches em preparação nas próximas datas.")
+    pendentes = futuros_requer_prep[
+        futuros_requer_prep["id"].apply(lambda eid: not voluntarios_por_evento.get(eid))
+    ].copy()
+    if pendentes.empty:
+        st.success("Todos os lanches com preparação marcada já têm voluntários.")
     else:
-        pendentes = futuros_requer_prep[
-            futuros_requer_prep["id"].apply(lambda eid: not voluntarios_por_evento.get(eid))
-        ].copy()
         pendentes["Data"] = pendentes["__data"].dt.strftime("%d/%m/%Y")
-        pendentes["Voluntários"] = pendentes["id"].apply(_list_voluntarios)
-
         colunas_topo = [
-            col for col in ["Data", "Dia da Semana", "Agenda", "Local", "Voluntários"]
-            if col in pendentes.columns or col == "Voluntários"
+            col for col in ["Data", "Dia da Semana", "Agenda", "Local"]
+            if col in pendentes.columns
         ]
-        if pendentes.empty:
-            st.success("Todos os lanches com preparação marcada já têm voluntários.")
-        else:
-            st.markdown("### 📆 Lanches a aguardar voluntários")
-            st.dataframe(
-                pendentes[colunas_topo],
-                use_container_width=True,
-                hide_index=True,
-            )
+        st.markdown("### 📆 Lanches a aguardar voluntários")
+        st.dataframe(
+            pendentes[colunas_topo],
+            use_container_width=True,
+            hide_index=True,
+        )
 
     st.markdown("---")
     st.markdown("### 🗂️ Calendário completo")
@@ -111,4 +106,8 @@ else:
             ids_series = df_cal.loc[df_limpo.index, "id"]
             df_limpo[coluna_vol] = ids_series.apply(_list_voluntarios)
 
-        st.dataframe(df_limpo, use_container_width=True, hide_index=True)
+        st.dataframe(
+            df_limpo,
+            use_container_width=True,
+            hide_index=True,
+        )
