@@ -10,6 +10,23 @@ dados = st.session_state.get("dados_cache", {})
 df_cal = dados.get("Calendario", pd.DataFrame())
 df_vol = dados.get("Voluntariado Pais", pd.DataFrame())
 
+
+def _first_existing(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    for candidate in candidates:
+        if candidate in df.columns:
+            return candidate
+    return None
+
+
+def _listar_nomes(valor) -> list[str]:
+    if isinstance(valor, list):
+        return [str(v).strip() for v in valor if pd.notna(v) and str(v).strip()]
+    if pd.isna(valor):
+        return []
+    texto = str(valor).strip()
+    return [texto] if texto else []
+
+
 if df_cal is None or df_cal.empty:
     st.info("ℹ️ Não há eventos registados.")
 else:
@@ -32,34 +49,42 @@ else:
 
     voluntarios_por_evento: dict[str, list[str]] = {}
     if df_vol is not None and not df_vol.empty:
-        for _, row in df_vol.iterrows():
-            eventos = row.get("Date (calendário)")
-            if isinstance(eventos, list):
-                evento_ids = eventos
-            elif pd.notna(eventos):
-                evento_ids = [eventos]
-            else:
-                continue
-
-            nomes_raw = row.get("Pais")
-            if isinstance(nomes_raw, list):
-                nomes = [str(nome) for nome in nomes_raw if pd.notna(nome)]
-            elif pd.notna(nomes_raw):
-                nomes = [str(nomes_raw)]
-            else:
-                nomes = []
-
-            for evento_id in evento_ids:
-                if not nomes:
+        df_vol = df_vol.copy()
+        col_link = _first_existing(
+            df_vol,
+            [
+                "Record_ID Calendário (from Date ( calendário ))",
+                "Record_ID Calendário (from Date (calendário))",
+                "Date ( calendário )",
+                "Date (calendário)",
+            ],
+        )
+        cancel_col = _first_existing(df_vol, ["Cancelado"])
+        if cancel_col:
+            df_vol = df_vol[~df_vol[cancel_col].fillna(False)]
+        if col_link:
+            for _, row in df_vol.iterrows():
+                evento_ids = row.get(col_link)
+                if isinstance(evento_ids, str):
+                    evento_ids = [evento_ids]
+                elif not isinstance(evento_ids, list):
+                    evento_ids = []
+                nomes = _listar_nomes(row.get("Pais"))
+                if not evento_ids or not nomes:
                     continue
-                voluntarios_por_evento.setdefault(evento_id, [])
-                voluntarios_por_evento[evento_id].extend(nomes)
+                for evento_id in evento_ids:
+                    voluntarios_por_evento.setdefault(evento_id, [])
+                    voluntarios_por_evento[evento_id].extend(nomes)
 
     def _list_voluntarios(evento_id: str) -> str:
         nomes = voluntarios_por_evento.get(evento_id, [])
         if not nomes:
             return ""
-        return ", ".join(dict.fromkeys(nomes))
+        vistos = []
+        for nome in nomes:
+            if nome not in vistos:
+                vistos.append(nome)
+        return ", ".join(vistos)
 
     pendentes = futuros_requer_prep[
         futuros_requer_prep["id"].apply(lambda eid: not voluntarios_por_evento.get(eid))
@@ -69,26 +94,15 @@ else:
     else:
         pendentes["Data"] = pendentes["__data"].dt.strftime("%d/%m/%Y")
         colunas_topo = [
-            col for col in ["Data", "Dia da Semana", "Agenda", "Local"]
-            if col in pendentes.columns
+            col for col in ["Data", "Dia da Semana", "Agenda", "Local"] if col in pendentes.columns
         ]
         st.markdown("### 📆 Lanches a aguardar voluntários")
-        st.dataframe(
-            pendentes[colunas_topo],
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe(pendentes[colunas_topo], use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("### 🗂️ Calendário completo")
 
-    colunas_uteis = [
-        "Data",
-        "Dia da Semana",
-        "Agenda",
-        coluna_prep,
-        coluna_vol,
-    ]
+    colunas_uteis = ["Data", "Dia da Semana", "Agenda", coluna_prep, coluna_vol]
     colunas_existentes = [c for c in colunas_uteis if c in df_cal.columns]
     if colunas_existentes:
         df_limpo = df_cal[colunas_existentes].copy()
@@ -106,8 +120,4 @@ else:
             ids_series = df_cal.loc[df_limpo.index, "id"]
             df_limpo[coluna_vol] = ids_series.apply(_list_voluntarios)
 
-        st.dataframe(
-            df_limpo,
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe(df_limpo, use_container_width=True, hide_index=True)
