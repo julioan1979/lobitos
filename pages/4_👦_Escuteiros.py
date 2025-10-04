@@ -57,23 +57,32 @@ item_columns = [
 ]
 
 def _render_menu_info(frame: pd.DataFrame) -> None:
-    if frame is None or frame.empty or "__data_menu" not in frame.columns:
-        st.info("Sem menu publicado para os próximos lanches.")
+    if frame is None or frame.empty:
+        st.info('Sem menu publicado para os próximos lanches.')
         return
-    frame = frame[frame["__data_menu" ].notna()].sort_values("__data_menu")
+    frame = frame.copy()
+    col_data = _first_existing(frame, possible_date_columns)
+    if col_data is None:
+        st.info('Sem menu publicado para os próximos lanches.')
+        return
+    frame[ '__data_menu' ] = frame[col_data].apply(
+        lambda valor: valor[0] if isinstance(valor, list) and valor else valor
+    )
+    frame['__data_menu'] = pd.to_datetime(frame['__data_menu'], errors='coerce')
+    frame = frame[frame['__data_menu'].notna()].sort_values('__data_menu')
     if frame.empty:
-        st.info("Sem menu publicado para os próximos lanches.")
+        st.info('Sem menu publicado para os próximos lanches.')
         return
     hoje = pd.Timestamp.today().normalize()
-    proximo = frame[frame["__data_menu"] >= hoje]
+    proximo = frame[frame['__data_menu'] >= hoje]
     destaque = proximo.iloc[0] if not proximo.empty else frame.iloc[-1]
-    data_txt = destaque["__data_menu"].strftime("%d/%m/%Y")
+    data_txt = destaque['__data_menu'].strftime('%d/%m/%Y')
 
     def _format_valor(valor):
         if isinstance(valor, list):
             valores = []
             for item in valor:
-                item_str = str(item).strip() if not isinstance(item, list) else ""
+                item_str = str(item).strip() if not isinstance(item, list) else ''
                 if item_str in recipes_map:
                     valores.append(recipes_map[item_str])
                 elif item_str:
@@ -81,7 +90,7 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
             return ', '.join(v for v in valores if v)
         valor_str = str(valor).strip()
         if not valor_str:
-            return ""
+            return ''
         return recipes_map.get(valor_str, valor_str)
 
     itens = []
@@ -104,6 +113,8 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
             st.markdown('\n'.join(itens))
         else:
             st.markdown('Menu ainda não publicado.')
+
+_render_menu_info(_normalizar_data_menu(df_menu))
 _render_menu_info(_normalizar_data_menu(df_menu))
 
 st.markdown(
