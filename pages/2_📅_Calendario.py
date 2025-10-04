@@ -19,8 +19,13 @@ else:
     hoje = pd.Timestamp.today().normalize()
     futuros = df_cal[df_cal["__data"].notna() & (df_cal["__data"] >= hoje)].sort_values("__data")
 
-    if "Haverá preparação de Lanches?" in futuros.columns:
-        futuros = futuros[futuros["Haverá preparação de Lanches?"].fillna(False).astype(bool)]
+    coluna_prep = "Haverá preparação de Lanches?"
+    coluna_vol = "Voluntariado Pais"
+
+    if coluna_prep in futuros.columns:
+        futuros_requer_prep = futuros[futuros[coluna_prep].fillna(False).astype(bool)].copy()
+    else:
+        futuros_requer_prep = futuros.iloc[0:0].copy()
 
     voluntarios_por_evento: dict[str, list[str]] = {}
     if df_vol is not None and not df_vol.empty:
@@ -33,66 +38,68 @@ else:
             else:
                 continue
 
-            nomes = row.get("Pais")
-            if isinstance(nomes, list):
-                nomes_fmt = [str(nome) for nome in nomes if pd.notna(nome)]
-            elif pd.notna(nomes):
-                nomes_fmt = [str(nomes)]
+            nomes_raw = row.get("Pais")
+            if isinstance(nomes_raw, list):
+                nomes = [str(nome) for nome in nomes_raw if pd.notna(nome)]
+            elif pd.notna(nomes_raw):
+                nomes = [str(nomes_raw)]
             else:
-                nomes_fmt = []
+                nomes = []
 
             for evento_id in evento_ids:
-                if not nomes_fmt:
+                if not nomes:
                     continue
                 voluntarios_por_evento.setdefault(evento_id, [])
-                voluntarios_por_evento[evento_id].extend(nomes_fmt)
+                voluntarios_por_evento[evento_id].extend(nomes)
 
-    if futuros.empty:
-        st.info("Não existem lanches marcados nas próximas datas.")
+    def _list_voluntarios(evento_id: str) -> str:
+        nomes = voluntarios_por_evento.get(evento_id, [])
+        if not nomes:
+            return ""
+        return ", ".join(dict.fromkeys(nomes))
+
+    if futuros_requer_prep.empty:
+        st.info("Não existem lanches em preparação nas próximas datas.")
     else:
-        tabela = futuros.copy()
-        tabela["Data"] = tabela["__data"].dt.strftime("%d/%m/%Y")
-        tabela["Voluntários"] = tabela["id"].apply(
-            lambda eid: ", ".join(dict.fromkeys(voluntarios_por_evento.get(eid, [])))
-        )
-        tabela["Status Voluntário"] = tabela["id"].apply(
-            lambda eid: "✅ Com voluntário" if voluntarios_por_evento.get(eid) else "❌ Em aberto"
-        )
+        pendentes = futuros_requer_prep[
+            futuros_requer_prep["id"].apply(lambda eid: not voluntarios_por_evento.get(eid))
+        ].copy()
+        pendentes["Data"] = pendentes["__data"].dt.strftime("%d/%m/%Y")
+        pendentes["Voluntários"] = pendentes["id"].apply(_list_voluntarios)
 
-        colunas = [
-            col
-            for col in ["Data", "Dia da Semana", "Agenda", "Local", "Status Voluntário", "Voluntários"]
-            if col in tabela.columns
+        colunas_topo = [
+            col for col in ["Data", "Dia da Semana", "Agenda", "Local", "Voluntários"]
+            if col in pendentes.columns or col == "Voluntários"
         ]
-
-        st.dataframe(
-            tabela[colunas],
-            use_container_width=True,
-            hide_index=True,
-        )
+        if pendentes.empty:
+            st.success("Todos os lanches em preparação já têm voluntários atribuídos.")
+        else:
+            st.markdown("### 📆 Lanches a aguardar voluntários")
+            st.dataframe(
+                pendentes[colunas_topo],
+                use_container_width=True,
+                hide_index=True,
+            )
 
     st.markdown("---")
-
     st.markdown("### 🗂️ Calendário completo")
+
     colunas_uteis = [
         "Data",
         "Dia da Semana",
         "Agenda",
-        "Haverá preparação de Lanches?",
-        "Voluntariado Pais",
+        coluna_prep,
+        coluna_vol,
     ]
     colunas_existentes = [c for c in colunas_uteis if c in df_cal.columns]
     if colunas_existentes:
         df_limpo = df_cal[colunas_existentes].copy()
         if "Data" in df_limpo.columns:
             df_limpo["Data"] = pd.to_datetime(df_limpo["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
-        if "Haverá preparação de Lanches?" in df_limpo.columns:
-            df_limpo["Haverá preparação de Lanches?"] = df_limpo["Haverá preparação de Lanches?"].apply(
-                lambda x: "Sim" if bool(x) else ""
-            )
-        if "Voluntariado Pais" in df_limpo.columns and "id" in df_cal.columns:
+        if coluna_prep in df_limpo.columns:
+            df_limpo[coluna_prep] = df_limpo[coluna_prep].apply(lambda x: "Sim" if bool(x) else "")
+        if coluna_vol in df_limpo.columns and "id" in df_cal.columns:
             ids_series = df_cal.loc[df_limpo.index, "id"]
-            df_limpo["Voluntariado Pais"] = ids_series.apply(
-                lambda eid: ", ".join(dict.fromkeys(voluntarios_por_evento.get(eid, [])))
-            )
+            df_limpo[coluna_vol] = ids_series.apply(_list_voluntarios)
+
         st.dataframe(df_limpo, use_container_width=True, hide_index=True)
