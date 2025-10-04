@@ -62,7 +62,8 @@ else:
         st.info("Não existem lanches em preparação nas próximas datas.")
     else:
         pendentes = futuros_requer_prep[
-            futuros_requer_prep["id"].apply(lambda eid: not voluntarios_por_evento.get(eid))
+            futuros_requer_prep[coluna_prep].fillna(False).astype(bool)
+            & futuros_requer_prep["id"].apply(lambda eid: not voluntarios_por_evento.get(eid))
         ].copy()
         pendentes["Data"] = pendentes["__data"].dt.strftime("%d/%m/%Y")
         pendentes["Voluntários"] = pendentes["id"].apply(_list_voluntarios)
@@ -72,7 +73,7 @@ else:
             if col in pendentes.columns or col == "Voluntários"
         ]
         if pendentes.empty:
-            st.success("Todos os lanches em preparação já têm voluntários atribuídos.")
+            st.success("Todos os lanches com preparação marcada já têm voluntários.")
         else:
             st.markdown("### 📆 Lanches a aguardar voluntários")
             st.dataframe(
@@ -96,6 +97,10 @@ else:
         df_limpo = df_cal[colunas_existentes].copy()
         if "Data" in df_limpo.columns:
             df_limpo["Data"] = pd.to_datetime(df_limpo["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
+        if "Dia da Semana" in df_limpo.columns:
+            df_limpo["Dia da Semana"] = df_limpo["Dia da Semana"].apply(
+                lambda valor: valor if isinstance(valor, str) else ""
+            )
         if coluna_prep in df_limpo.columns:
             df_limpo[coluna_prep] = df_limpo[coluna_prep].apply(lambda x: "Sim" if bool(x) else "")
         if coluna_vol in df_limpo.columns and "id" in df_cal.columns:
