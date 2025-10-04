@@ -22,8 +22,11 @@ else:
     coluna_prep = "Haverá preparação de Lanches?"
     coluna_vol = "Voluntariado Pais"
 
+    def _tem_preparacao(valor) -> bool:
+        return isinstance(valor, bool) and valor
+
     if coluna_prep in futuros.columns:
-        futuros_requer_prep = futuros[futuros[coluna_prep].fillna(False).astype(bool)].copy()
+        futuros_requer_prep = futuros[futuros[coluna_prep].apply(_tem_preparacao)].copy()
     else:
         futuros_requer_prep = futuros.iloc[0:0].copy()
 
@@ -62,8 +65,7 @@ else:
         st.info("Não existem lanches em preparação nas próximas datas.")
     else:
         pendentes = futuros_requer_prep[
-            futuros_requer_prep[coluna_prep].fillna(False).astype(bool)
-            & futuros_requer_prep["id"].apply(lambda eid: not voluntarios_por_evento.get(eid))
+            futuros_requer_prep["id"].apply(lambda eid: not voluntarios_por_evento.get(eid))
         ].copy()
         pendentes["Data"] = pendentes["__data"].dt.strftime("%d/%m/%Y")
         pendentes["Voluntários"] = pendentes["id"].apply(_list_voluntarios)
@@ -102,7 +104,9 @@ else:
                 lambda valor: valor if isinstance(valor, str) else ""
             )
         if coluna_prep in df_limpo.columns:
-            df_limpo[coluna_prep] = df_limpo[coluna_prep].apply(lambda x: "Sim" if bool(x) else "")
+            df_limpo[coluna_prep] = df_limpo[coluna_prep].apply(
+                lambda x: "Sim" if isinstance(x, bool) and x else ""
+            )
         if coluna_vol in df_limpo.columns and "id" in df_cal.columns:
             ids_series = df_cal.loc[df_limpo.index, "id"]
             df_limpo[coluna_vol] = ids_series.apply(_list_voluntarios)
