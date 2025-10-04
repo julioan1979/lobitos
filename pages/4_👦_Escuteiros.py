@@ -7,7 +7,22 @@ menu_with_redirect()
 st.title("🧒 Escuteiros")
 
 dados = st.session_state.get("dados_cache", {})
+df_recipes = dados.get("Recipes", pd.DataFrame())
+
+def _first_existing(frame: pd.DataFrame, columns: list[str]) -> str | None:
+    if frame is None or frame.empty:
+        return None
+    for col in columns:
+        if col in frame.columns:
+            return col
+    return None
+
 df_menu = dados.get("Publicar Menu do Scouts", pd.DataFrame())
+recipes_name_col = _first_existing(df_recipes, ['Menu', 'Nome', 'Nome do Item']) if df_recipes is not None else None
+recipes_map = {}
+if recipes_name_col:
+    recipes_map = df_recipes.set_index('id')[recipes_name_col].dropna().astype(str).to_dict()
+
 
 possible_date_columns = [
     "Date (from Publicação Filtro)",
@@ -45,7 +60,7 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
     if frame is None or frame.empty or "__data_menu" not in frame.columns:
         st.info("Sem menu publicado para os próximos lanches.")
         return
-    frame = frame[frame["__data_menu"].notna()].sort_values("__data_menu")
+    frame = frame[frame["__data_menu" ].notna()].sort_values("__data_menu")
     if frame.empty:
         st.info("Sem menu publicado para os próximos lanches.")
         return
@@ -53,6 +68,21 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
     proximo = frame[frame["__data_menu"] >= hoje]
     destaque = proximo.iloc[0] if not proximo.empty else frame.iloc[-1]
     data_txt = destaque["__data_menu"].strftime("%d/%m/%Y")
+
+    def _format_valor(valor):
+        if isinstance(valor, list):
+            valores = []
+            for item in valor:
+                item_str = str(item).strip() if not isinstance(item, list) else ""
+                if item_str in recipes_map:
+                    valores.append(recipes_map[item_str])
+                elif item_str:
+                    valores.append(item_str)
+            return ', '.join(v for v in valores if v)
+        valor_str = str(valor).strip()
+        if not valor_str:
+            return ""
+        return recipes_map.get(valor_str, valor_str)
 
     itens = []
     for rotulo, campos in item_columns:
@@ -63,22 +93,17 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
                 break
         if valor_campo is None:
             continue
-        if isinstance(valor_campo, list):
-            texto = ", ".join(str(v) for v in valor_campo if pd.notna(v) and str(v).strip())
-        else:
-            texto = str(valor_campo).strip()
+        texto = _format_valor(valor_campo)
         if not texto:
-            texto = "—"
-        itens.append(f"- **{rotulo}:** {texto}")
+            texto = '—'
+        itens.append(f'- **{rotulo}:** {texto}')
 
     with st.container(border=True):
-        st.markdown(f"### 🍱 Menu do próximo lanche ({data_txt})")
+        st.markdown(f'### 🍱 Menu do próximo lanche ({data_txt})')
         if itens:
-            st.markdown("\n".join(itens))
+            st.markdown('\n'.join(itens))
         else:
-            st.markdown("Menu ainda não publicado.")
-
-
+            st.markdown('Menu ainda não publicado.')
 _render_menu_info(_normalizar_data_menu(df_menu))
 
 st.markdown(
