@@ -1,0 +1,22 @@
+[project]
+name = "lobitos-frontend"
+version = "0.1.0"
+description = "Portal Streamlit para gestão dos lanches Lobitos"
+requires-python = ">=3.10"
+dependencies = [
+  "streamlit>=1.38.0",
+  "pandas>=2.2.2",
+  "pyairtable>=2.2.0",
+  "toml>=0.10.2",
+]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["services"]

@@ -1,9 +1,9 @@
 import streamlit as st
 from pyairtable import Api
 import toml
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-st.set_page_config(page_title="Portal Lobitos - Login", page_icon="🐾", layout="centered")
+st.set_page_config(page_title="Portal Lobitos - Login", page_icon="🦊", layout="centered")
 
 
 def _obter_airtable_client() -> tuple[Api, str]:
@@ -38,10 +38,10 @@ def _buscar_escuteiros(email: str) -> List[Dict[str, Any]]:
     tabela = api.table(base_id, "Escuteiros")
     email_filtrado = email.replace("'", "\'")
     formula = (
-        f"OR("
+        "OR("
         f"LOWER({{Email}})='{email_filtrado}',"
         f"LOWER({{Email Alternativo}})='{email_filtrado}'"
-        f")"
+        ")"
     )
     return tabela.all(formula=formula, max_records=50)
 
@@ -55,13 +55,13 @@ def _determinar_role(registos: List[Dict[str, Any]]) -> str:
     return "pais"
 
 
-st.title("🐾 Portal Lobitos")
+st.title("🦊 Portal Lobitos")
 st.write("Bem-vindo ao Portal dos Lanches Lobitos! Faça login para continuar.")
 
 email_input = st.text_input("Email")
 senha_input = st.text_input("Senha", type="password")
 
-if st.button("Entrar 🚀"):
+if st.button("Entrar 🦊"):
     email_normalizado = _normalizar_email(email_input)
 
     if not email_normalizado or not senha_input:
@@ -76,31 +76,31 @@ if st.button("Entrar 🚀"):
                 st.error("Não encontrei escuteiros associados a este email.")
             else:
                 correspondencias = []
-                for r in registos:
-                    campos = r.get("fields", {})
+                for registo in registos:
+                    campos = registo.get("fields", {})
                     senha_registo = campos.get("Senha_Painel")
                     if senha_registo is None:
                         continue
                     if str(senha_registo).strip() == senha_input.strip():
-                        correspondencias.append(r)
+                        correspondencias.append(registo)
                 if not correspondencias:
                     st.error("Senha incorreta.")
                 else:
                     role = _determinar_role(correspondencias)
 
                     if role in {"tesoureiro", "admin"}:
-                        escuteiros_ids = [r["id"] for r in registos]
+                        escuteiros_ids = [registo["id"] for registo in registos]
                         nomes_escuteiros = [
-                            r.get("fields", {}).get("Nome do Escuteiro")
-                            for r in registos
-                            if _campo_com_conteudo(r.get("fields", {}).get("Nome do Escuteiro"))
+                            registo.get("fields", {}).get("Nome do Escuteiro")
+                            for registo in registos
+                            if _campo_com_conteudo(registo.get("fields", {}).get("Nome do Escuteiro"))
                         ]
                     else:
-                        escuteiros_ids = [r["id"] for r in correspondencias]
+                        escuteiros_ids = [registo["id"] for registo in correspondencias]
                         nomes_escuteiros = [
-                            r.get("fields", {}).get("Nome do Escuteiro")
-                            for r in correspondencias
-                            if _campo_com_conteudo(r.get("fields", {}).get("Nome do Escuteiro"))
+                            registo.get("fields", {}).get("Nome do Escuteiro")
+                            for registo in correspondencias
+                            if _campo_com_conteudo(registo.get("fields", {}).get("Nome do Escuteiro"))
                         ]
 
                     st.session_state["role"] = role

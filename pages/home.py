@@ -2,15 +2,14 @@
 #-*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
-from pyairtable import Api
+from services.airtable_service import AirtableConfig, AirtableService
 import toml
 from menu import menu_with_redirect
 import locale
-import time
 from datetime import datetime
 import streamlit.components.v1 as components
+from typing import Sequence
 
-import locale
 
 try:
     locale.setlocale(locale.LC_ALL, "pt_PT.UTF-8")
@@ -29,6 +28,7 @@ menu_with_redirect()
 role = st.session_state.get("role")
 user_info = st.session_state.get("user", {})
 allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else set()
+allowed_ids_tuple = tuple(sorted(allowed_escuteiros))
 
 st.session_state["debug_pedidos"] = st.sidebar.checkbox("Debug pedidos", value=st.session_state.get("debug_pedidos", False))
 
@@ -44,42 +44,78 @@ if role is None:
 # ======================
 # 2) Função para carregar dados do Airtable
 # ======================
-if "AIRTABLE_TOKEN" in st.secrets:
-    AIRTABLE_TOKEN = st.secrets["AIRTABLE_TOKEN"]
-    BASE_ID = st.secrets["AIRTABLE_BASE_ID"]
-else:
-    secrets = toml.load(".streamlit/secrets.toml")
-    AIRTABLE_TOKEN = secrets["AIRTABLE_TOKEN"]
-    BASE_ID = secrets["AIRTABLE_BASE_ID"]
+def _load_airtable_config() -> AirtableConfig:
+    if "AIRTABLE_TOKEN" in st.secrets:
+        token = st.secrets["AIRTABLE_TOKEN"]
+        base_id = st.secrets["AIRTABLE_BASE_ID"]
+    else:
+        secrets = toml.load(".streamlit/secrets.toml")
+        token = secrets["AIRTABLE_TOKEN"]
+        base_id = secrets["AIRTABLE_BASE_ID"]
+    return AirtableConfig(token=token, base_id=base_id)
 
-api = Api(AIRTABLE_TOKEN)
 
-def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
-    dados = {}
+@st.cache_resource
+def get_airtable_service(token: str, base_id: str) -> AirtableService:
+    return AirtableService(AirtableConfig(token=token, base_id=base_id))
 
-    # Mapear tabelas necessárias por role
+
+AIRTABLE_CONFIG = _load_airtable_config()
+AIRTABLE_TOKEN = AIRTABLE_CONFIG.token
+BASE_ID = AIRTABLE_CONFIG.base_id
+AIRTABLE_SERVICE = get_airtable_service(AIRTABLE_TOKEN, BASE_ID)
+
+
+def _build_record_id_formula(record_ids: Sequence[str]) -> str:
+    parts = [f"RECORD_ID()='{rid}'" for rid in record_ids]
+    return f"OR({', '.join(parts)})" if parts else ""
+
+
+def _build_linked_formula(field: str, record_ids: Sequence[str]) -> str:
+    checks = [f"FIND('{rid}', ARRAYJOIN({{ {field} }}))" for rid in record_ids]
+    return f"OR({', '.join(checks)})" if checks else ""
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def carregar_todas_as_tabelas(token: str, base_id: str, role: str, allowed_ids: tuple[str, ...]) -> dict[str, pd.DataFrame]:
+    service = get_airtable_service(token, base_id)
+    dados: dict[str, pd.DataFrame] = {}
+
     tabelas_por_role = {
         "pais": ["Pedidos", "Calendario", "Voluntariado Pais", "Escuteiros", "Recipes"],
         "tesoureiro": ["Escuteiros", "Recebimento", "Publicar Menu do Scouts"],
-        "admin": None  # admin carrega todas
+        "admin": None,
     }
 
     if role == "admin":
-        lista_tabelas = [tbl.name for tbl in api.base(base_id).tables()]
+        try:
+            lista_tabelas = service.list_table_names()
+        except Exception as exc:  # pragma: no cover - feedback visual
+            st.error(f"Não consegui listar as tabelas do Airtable: {exc}")
+            return dados
     else:
         lista_tabelas = tabelas_por_role.get(role, [])
 
+    if not lista_tabelas:
+        return dados
+
+    parent_ids = tuple(sorted(allowed_ids))
+
     for nome in lista_tabelas:
+        formula = None
+        if role == "pais" and parent_ids:
+            if nome == "Escuteiros":
+                formula = _build_record_id_formula(parent_ids)
+            elif nome in {"Pedidos", "Voluntariado Pais"}:
+                formula = _build_linked_formula("Escuteiros", parent_ids)
         try:
-            tbl = api.table(base_id, nome)
-            records = tbl.all()
-            rows = [{"id": r["id"], **r["fields"]} for r in records]
-            dados[nome] = pd.DataFrame(rows)
-            time.sleep(0.25)  # evitar limite 5 requests/s
-        except Exception as e:
-            st.warning(f"⚠️ Não consegui carregar a tabela {nome}: {e}")
+            dados[nome] = service.fetch_table(nome, formula=formula)
+        except Exception as exc:  # pragma: no cover - feedback visual
+            st.warning(f"⚠️ Não consegui carregar a tabela {nome}: {exc}")
             dados[nome] = pd.DataFrame()
+
     return dados
+
 
 def mostrar_barra_acoes(botoes: list[tuple[str, str]], espacador: int = 6) -> dict[str, bool]:
     """Renderiza uma barra de ações consistente e devolve o estado dos botões."""
@@ -140,11 +176,12 @@ def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_he
 # 3) Cache e botão de refresh
 # ======================
 if "dados_cache" not in st.session_state:
-    st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
+    st.session_state["dados_cache"] = carregar_todas_as_tabelas(AIRTABLE_TOKEN, BASE_ID, role, allowed_ids_tuple)
     st.session_state["last_update"] = datetime.now()
 
 if st.button("🔄 Atualizar dados do Airtable"):
-    st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
+    carregar_todas_as_tabelas.clear()
+    st.session_state["dados_cache"] = carregar_todas_as_tabelas(AIRTABLE_TOKEN, BASE_ID, role, allowed_ids_tuple)
     st.session_state["last_update"] = datetime.now()
     st.success("✅ Dados atualizados com sucesso!")
 
@@ -664,7 +701,8 @@ def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
 
     def refrescar_dados():
-        st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
+        carregar_todas_as_tabelas.clear()
+        st.session_state["dados_cache"] = carregar_todas_as_tabelas(AIRTABLE_TOKEN, BASE_ID, role, allowed_ids_tuple)
         st.session_state["last_update"] = datetime.now()
 
     st.markdown("### 📝 Ações rápidas")
@@ -844,7 +882,7 @@ def dashboard_admin(dados: dict):
                 if local_novo is not None:
                     campos["Local"] = local_novo
                 try:
-                    api.table(BASE_ID, "Calendario").create(campos)
+                    AIRTABLE_SERVICE.create_record("Calendario", campos)
                 except Exception as exc:
                     st.error(f"Não consegui criar o evento: {exc}")
                 else:
@@ -957,8 +995,7 @@ def dashboard_admin(dados: dict):
                 atualizados = 0
                 removidos = 0
                 bloqueados = []
-                tbl_cal = api.table(BASE_ID, "Calendario")
-
+                
                 def _tem_voluntarios(evento_id: str) -> bool:
                     if df_volunt.empty or "Date (calendário)" not in df_volunt.columns:
                         return False
@@ -979,7 +1016,7 @@ def dashboard_admin(dados: dict):
                             bloqueados.append((event_id, "Existe voluntariado associado"))
                             continue
                         try:
-                            tbl_cal.delete(event_id)
+                            AIRTABLE_SERVICE.delete_record("Calendario", event_id)
                         except Exception as exc:
                             st.error(f"Não consegui apagar o evento {event_id}: {exc}")
                         else:
@@ -1023,7 +1060,7 @@ def dashboard_admin(dados: dict):
                         continue
 
                     try:
-                        tbl_cal.update(event_id, campos_update)
+                        AIRTABLE_SERVICE.update_record("Calendario", event_id, campos_update)
                     except Exception as exc:
                         st.error(f"Não consegui atualizar o evento {event_id}: {exc}")
                     else:
