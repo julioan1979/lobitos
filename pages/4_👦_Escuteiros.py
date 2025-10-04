@@ -1,29 +1,33 @@
-import streamlit as st
-import pandas as pd
+﻿import streamlit as st
 from menu import menu_with_redirect
 
 menu_with_redirect()
 
-st.title("👦 Escuteiros")
+st.title("🧒 Escuteiros")
 
-dados = st.session_state.get("dados_cache", {})
-df = dados.get("Escuteiros")
+st.markdown(
+    """
+    ### 📄 Formulário de Marcação de Lanche
+    Preencha o formulário abaixo para marcar o lanche do seu escuteiro.
+    """
+)
 
-if df is None or df.empty:
-    st.info("ℹ️ Não há escuteiros registados.")
-else:
-    colunas_uteis = [
-        "Nome do Escuteiro", "ID_Escuteiro", "Nome do Encarregado", "Email",
-        "Email Alternativo", "Tel_Automation", "Data de Aniversário Lobito",
-        "Status Inativo", "inativo/desligado", "RGPD"
-    ]
-    colunas_existentes = [c for c in colunas_uteis if c in df.columns]
-    df_limpo = df[colunas_existentes].copy()
+st.components.v1.html(
+    """
+    <iframe class="airtable-embed"
+        src="https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
+        frameborder="0" onmousewheel="" width="100%" height="650"
+        style="background: transparent; border: 1px solid #ccc;">
+    </iframe>
+    """,
+    height=700,
+    scrolling=True,
+)
 
-    if "Status Inativo" in df.columns or "inativo/desligado" in df.columns:
-        df_limpo["Estado"] = df.apply(
-            lambda x: "❌ Inativo" if (str(x.get("Status Inativo")) == "True") or (str(x.get("inativo/desligado")) == "True") else "✅ Ativo",
-            axis=1
-        )
+if st.button("🔄 Recarregar formulário"):
+    st.experimental_rerun()
 
-    st.dataframe(df_limpo, use_container_width=True)
+st.markdown("---")
+st.info(
+    "Precisa cancelar uma marcação? Utilize a opção **Cancelar Lanche** no dashboard principal."
+)
