@@ -7,8 +7,41 @@ menu_with_redirect()
 st.title("🧒 Escuteiros")
 
 dados = st.session_state.get("dados_cache", {})
-df_cal = dados.get("Calendario", pd.DataFrame())
-df_vol = dados.get("Voluntariado Pais", pd.DataFrame())
+df_menu = dados.get("Publicar Menu do Scouts", pd.DataFrame())
+
+col_lanche = "Menu do Lanche"
+col_data = "Date"
+col_semana = "Week Num Menu Publicado"
+col_entrada = "Entrada"
+col_bebida = "Bebida"
+col_lanche = "Lanche"
+col_sobremesa = "Sobremesa"
+
+if df_menu is not None and not df_menu.empty:
+    df_menu = df_menu.copy()
+    df_menu[col_data] = pd.to_datetime(df_menu.get(col_data), errors="coerce")
+    hoje = pd.Timestamp.today().normalize()
+    df_menu = df_menu[df_menu[col_data].notna()].sort_values(col_data)
+    proximo = df_menu[df_menu[col_data] >= hoje]
+    destaque = proximo.iloc[0] if not proximo.empty else df_menu.iloc[-1]
+
+    data_txt = destaque[col_data].strftime("%d/%m/%Y") if pd.notna(destaque[col_data]) else "—"
+    itens = []
+    for rotulo, campo in [("Entrada", col_entrada), ("Lanche", col_lanche), ("Bebida", col_bebida), ("Sobremesa", col_sobremesa)]:
+        valor = destaque.get(campo)
+        if isinstance(valor, list):
+            texto = ", ".join(str(v) for v in valor if pd.notna(v))
+        elif pd.isna(valor):
+            texto = "—"
+        else:
+            texto = str(valor)
+        itens.append(f"- **{rotulo}:** {texto}")
+
+    with st.container(border=True):
+        st.markdown(f"### 🍽️ Próximo lanche ({data_txt})")
+        st.markdown("\n".join(itens))
+else:
+    st.info("Sem menu publicado para os próximos lanches.")
 
 st.markdown(
     """
@@ -28,71 +61,6 @@ st.components.v1.html(
     height=700,
     scrolling=True,
 )
-
-if st.button("🔄 Recarregar formulário"):
-    st.experimental_rerun()
-
-st.markdown("---")
-
-hoje = pd.Timestamp.today().normalize()
-if df_cal is None or df_cal.empty or "id" not in df_cal.columns:
-    st.info("Ainda não há eventos do calendário disponíveis.")
-else:
-    df_cal = df_cal.copy()
-    df_cal["__data"] = pd.to_datetime(df_cal.get("Data"), errors="coerce")
-
-    if "Haverá preparação de Lanches?" in df_cal.columns:
-        df_cal = df_cal[df_cal["Haverá preparação de Lanches?"].fillna(False).astype(bool)]
-
-    agenda = df_cal[df_cal["__data"].notna() & (df_cal["__data"] >= hoje)].sort_values("__data")
-
-    if agenda.empty:
-        st.info("Nenhum lanche marcado para as próximas datas.")
-    else:
-        voluntarios_por_evento: dict[str, list[str]] = {}
-        if df_vol is not None and not df_vol.empty:
-            df_vol = df_vol.copy()
-            for _, row in df_vol.iterrows():
-                eventos = row.get("Date (calendário)")
-                if isinstance(eventos, list):
-                    evento_ids = eventos
-                elif pd.notna(eventos):
-                    evento_ids = [eventos]
-                else:
-                    continue
-
-                nomes = row.get("Pais")
-                if isinstance(nomes, list):
-                    nomes_fmt = ", ".join(str(nome) for nome in nomes if pd.notna(nome))
-                elif pd.notna(nomes):
-                    nomes_fmt = str(nomes)
-                else:
-                    nomes_fmt = ""
-
-                for evento_id in evento_ids:
-                    voluntarios_por_evento.setdefault(evento_id, [])
-                    if nomes_fmt:
-                        voluntarios_por_evento[evento_id].append(nomes_fmt)
-
-        agenda_display = agenda.copy()
-        agenda_display["Data"] = agenda_display["__data"].dt.strftime("%d/%m/%Y")
-        agenda_display["Voluntários"] = agenda_display["id"].apply(
-            lambda eid: ", ".join(voluntarios_por_evento.get(eid, []))
-        )
-        agenda_display["Status Voluntário"] = agenda_display["id"].apply(
-            lambda eid: "✅ Com voluntário" if voluntarios_por_evento.get(eid) else "❌ Em aberto"
-        )
-
-        colunas = [
-            col for col in ["Data", "Agenda", "Local", "Status Voluntário", "Voluntários"]
-            if col in agenda_display.columns
-        ]
-        st.markdown("### 📆 Próximos lanches")
-        st.dataframe(
-            agenda_display[colunas],
-            use_container_width=True,
-            hide_index=True,
-        )
 
 st.markdown("---")
 st.info(
