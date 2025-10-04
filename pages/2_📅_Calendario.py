@@ -35,16 +35,17 @@ else:
 
             nomes = row.get("Pais")
             if isinstance(nomes, list):
-                nomes_fmt = ", ".join(str(nome) for nome in nomes if pd.notna(nome))
+                nomes_fmt = [str(nome) for nome in nomes if pd.notna(nome)]
             elif pd.notna(nomes):
-                nomes_fmt = str(nomes)
+                nomes_fmt = [str(nomes)]
             else:
-                nomes_fmt = ""
+                nomes_fmt = []
 
             for evento_id in evento_ids:
+                if not nomes_fmt:
+                    continue
                 voluntarios_por_evento.setdefault(evento_id, [])
-                if nomes_fmt:
-                    voluntarios_por_evento[evento_id].append(nomes_fmt)
+                voluntarios_por_evento[evento_id].extend(nomes_fmt)
 
     if futuros.empty:
         st.info("Não existem lanches marcados nas próximas datas.")
@@ -52,7 +53,7 @@ else:
         tabela = futuros.copy()
         tabela["Data"] = tabela["__data"].dt.strftime("%d/%m/%Y")
         tabela["Voluntários"] = tabela["id"].apply(
-            lambda eid: ", ".join(voluntarios_por_evento.get(eid, []))
+            lambda eid: ", ".join(dict.fromkeys(voluntarios_por_evento.get(eid, [])))
         )
         tabela["Status Voluntário"] = tabela["id"].apply(
             lambda eid: "✅ Com voluntário" if voluntarios_por_evento.get(eid) else "❌ Em aberto"
@@ -85,4 +86,13 @@ else:
         df_limpo = df_cal[colunas_existentes].copy()
         if "Data" in df_limpo.columns:
             df_limpo["Data"] = pd.to_datetime(df_limpo["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
+        if "Haverá preparação de Lanches?" in df_limpo.columns:
+            df_limpo["Haverá preparação de Lanches?"] = df_limpo["Haverá preparação de Lanches?"].apply(
+                lambda x: "Sim" if bool(x) else ""
+            )
+        if "Voluntariado Pais" in df_limpo.columns and "id" in df_cal.columns:
+            ids_series = df_cal.loc[df_limpo.index, "id"]
+            df_limpo["Voluntariado Pais"] = ids_series.apply(
+                lambda eid: ", ".join(dict.fromkeys(voluntarios_por_evento.get(eid, [])))
+            )
         st.dataframe(df_limpo, use_container_width=True, hide_index=True)
