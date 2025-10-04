@@ -9,25 +9,28 @@ st.title("🧒 Escuteiros")
 dados = st.session_state.get("dados_cache", {})
 df_menu = dados.get("Publicar Menu do Scouts", pd.DataFrame())
 
-col_lanche = "Menu do Lanche"
 col_data = "Date"
-col_semana = "Week Num Menu Publicado"
-col_entrada = "Entrada"
-col_bebida = "Bebida"
-col_lanche = "Lanche"
-col_sobremesa = "Sobremesa"
+colunas_lanche = [
+    ("Entrada", "Entrada"),
+    ("Lanche", "Lanche"),
+    ("Bebida", "Bebida"),
+    ("Sobremesa", "Sobremesa"),
+]
 
-if df_menu is not None and not df_menu.empty:
+if df_menu is not None and not df_menu.empty and col_data in df_menu.columns:
     df_menu = df_menu.copy()
-    df_menu[col_data] = pd.to_datetime(df_menu.get(col_data), errors="coerce")
-    hoje = pd.Timestamp.today().normalize()
+    df_menu[col_data] = pd.to_datetime(df_menu[col_data], errors="coerce")
     df_menu = df_menu[df_menu[col_data].notna()].sort_values(col_data)
+    hoje = pd.Timestamp.today().normalize()
     proximo = df_menu[df_menu[col_data] >= hoje]
-    destaque = proximo.iloc[0] if not proximo.empty else df_menu.iloc[-1]
+    destaque = proximo.iloc[0] if not proximo.empty else (df_menu.iloc[-1] if not df_menu.empty else None)
+else:
+    destaque = None
 
-    data_txt = destaque[col_data].strftime("%d/%m/%Y") if pd.notna(destaque[col_data]) else "—"
+if destaque is not None:
+    data_txt = destaque[col_data].strftime("%d/%m/%Y")
     itens = []
-    for rotulo, campo in [("Entrada", col_entrada), ("Lanche", col_lanche), ("Bebida", col_bebida), ("Sobremesa", col_sobremesa)]:
+    for rotulo, campo in colunas_lanche:
         valor = destaque.get(campo)
         if isinstance(valor, list):
             texto = ", ".join(str(v) for v in valor if pd.notna(v))
@@ -36,7 +39,6 @@ if df_menu is not None and not df_menu.empty:
         else:
             texto = str(valor)
         itens.append(f"- **{rotulo}:** {texto}")
-
     with st.container(border=True):
         st.markdown(f"### 🍽️ Próximo lanche ({data_txt})")
         st.markdown("\n".join(itens))
