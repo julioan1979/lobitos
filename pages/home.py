@@ -59,7 +59,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
 
     # Mapear tabelas necessárias por role
     tabelas_por_role = {
-        "pais": ["Pedidos", "Calendario", "Voluntariado Pais", "Escuteiros", "Recipes"],
+        "pais": ["Pedidos", "Calendario", "Voluntariado Pais", "Escuteiros", "Recipes", "Publicar Menu do Scouts"],
         "tesoureiro": ["Escuteiros", "Recebimento", "Publicar Menu do Scouts"],
         "admin": None  # admin carrega todas
     }
