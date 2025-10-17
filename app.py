@@ -33,6 +33,11 @@ def _campo_com_conteudo(valor: Any) -> bool:
     return False
 
 
+def _checkbox_marcado(valor: Any) -> bool:
+    """Aceita apenas checkboxes verdadeiros devolvidos pelo Airtable."""
+    return isinstance(valor, bool) and valor is True
+
+
 def _buscar_escuteiros(email: str) -> List[Dict[str, Any]]:
     api, base_id = _obter_airtable_client()
     tabela = api.table(base_id, "Escuteiros")
@@ -48,7 +53,7 @@ def _buscar_escuteiros(email: str) -> List[Dict[str, Any]]:
 
 def _determinar_role(registos: List[Dict[str, Any]]) -> str:
     campos = [r.get("fields", {}) for r in registos]
-    if any(_campo_com_conteudo(f.get("Admin")) for f in campos):
+    if any(_checkbox_marcado(f.get("Admin")) for f in campos):
         return "admin"
     if any(_campo_com_conteudo(f.get("CPP_Tesoureiros")) for f in campos):
         return "tesoureiro"
