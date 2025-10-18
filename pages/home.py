@@ -59,15 +59,31 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
 
     # Mapear tabelas necessárias por role
     tabelas_por_role = {
-        "pais": ["Pedidos", "Calendario", "Voluntariado Pais", "Escuteiros", "Recipes", "Publicar Menu do Scouts"],
-        "tesoureiro": ["Escuteiros", "Recebimento", "Publicar Menu do Scouts"],
-        "admin": None  # admin carrega todas
+        "pais": [
+            "Pedidos",
+            "Calendario",
+            "Voluntariado Pais",
+            "Escuteiros",
+            "Recipes",
+            "Publicar Menu do Scouts",
+        ],
+        "tesoureiro": [
+            "Escuteiros",
+            "Recebimento",
+            "Publicar Menu do Scouts",
+        ],
+        "admin": [
+            "Pedidos",
+            "Calendario",
+            "Voluntariado Pais",
+            "Escuteiros",
+            "Recipes",
+            "Recebimento",
+            "Publicar Menu do Scouts",
+        ],
     }
 
-    if role == "admin":
-        lista_tabelas = [tbl.name for tbl in api.base(base_id).tables()]
-    else:
-        lista_tabelas = tabelas_por_role.get(role, [])
+    lista_tabelas = tabelas_por_role.get(role, [])
 
     for nome in lista_tabelas:
         try:
