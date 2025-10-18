@@ -34,8 +34,13 @@ def _campo_com_conteudo(valor: Any) -> bool:
 
 
 def _checkbox_marcado(valor: Any) -> bool:
-    """Aceita apenas checkboxes verdadeiros devolvidos pelo Airtable."""
-    return isinstance(valor, bool) and valor is True
+    """Reconhece checkboxes marcados, incluindo lookups que devolvem listas."""
+    if isinstance(valor, bool):
+        return valor
+    if isinstance(valor, list):
+        return any(isinstance(item, bool) and item for item in valor)
+    return False
+
 
 
 def _buscar_escuteiros(email: str) -> List[Dict[str, Any]]:
