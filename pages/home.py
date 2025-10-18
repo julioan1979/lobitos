@@ -30,8 +30,6 @@ role = st.session_state.get("role")
 user_info = st.session_state.get("user", {})
 allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else set()
 
-st.session_state["debug_pedidos"] = st.sidebar.checkbox("Debug pedidos", value=st.session_state.get("debug_pedidos", False))
-
 if role is None:
     st.stop()
 
@@ -330,11 +328,6 @@ def dashboard_pais():
                 pedidos_escuteiro["__data"] = pd.NaT
             pedidos_escuteiro = pedidos_escuteiro.sort_values("__data", ascending=False)
 
-    if st.session_state.get("debug_pedidos", False):
-        with st.expander("Debug pedidos", expanded=False):
-            preview_cols = [c for c in ["Date", "Created", "__data", "Escuteiros"] if c in pedidos_escuteiro.columns]
-            st.dataframe(pedidos_escuteiro[preview_cols].head(10), use_container_width=True)
-
     st.subheader("📖 Últimos pedidos")
     if pedidos_escuteiro.empty:
         st.info("ℹ️ Ainda não há pedidos registados para este lobito.")
@@ -342,12 +335,18 @@ def dashboard_pais():
         pedidos_mostrar = pedidos_escuteiro.head(5).copy()
         if "__data" in pedidos_mostrar.columns:
             pedidos_mostrar["Data"] = pedidos_mostrar["__data"].dt.strftime("%d/%m/%Y")
+            pedidos_mostrar["Hora"] = pedidos_mostrar["__data"].dt.strftime("%H:%M").fillna("")
         for coluna in ["Bebida", "Lanche", "Fruta"]:
             if coluna in pedidos_mostrar.columns:
                 pedidos_mostrar[coluna] = pedidos_mostrar[coluna].apply(lambda valor: _resolver_lista(valor, recipes_map))
         if "Restrição alimentar" in pedidos_mostrar.columns:
             pedidos_mostrar["Restrição alimentar"] = pedidos_mostrar["Restrição alimentar"].fillna("")
         colunas_exibir = [c for c in ["Data", "Lanche", "Bebida", "Fruta", "Restrição alimentar"] if c in pedidos_mostrar.columns]
+        if "Hora" in pedidos_mostrar.columns:
+            if "Data" in colunas_exibir:
+                colunas_exibir.insert(colunas_exibir.index("Data") + 1, "Hora")
+            else:
+                colunas_exibir.insert(0, "Hora")
         st.dataframe(pedidos_mostrar[colunas_exibir], use_container_width=True)
 
     st.divider()
