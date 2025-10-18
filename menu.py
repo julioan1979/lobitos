@@ -14,7 +14,11 @@ def _hide_streamlit_sidebar_nav() -> None:
     st.markdown(
         """
         <style>
-            [data-testid="stSidebarNav"] {display: none;}
+            [data-testid="stSidebarNav"],
+            section[data-testid="stSidebarNav"],
+            section[data-testid="stSidebarNavItems"] {
+                display: none !important;
+            }
         </style>
         """,
         unsafe_allow_html=True,
