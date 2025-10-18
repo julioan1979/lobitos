@@ -687,6 +687,7 @@ def dashboard_admin(dados: dict):
     acoes_admin = mostrar_barra_acoes([
         ("🚫 Cancelar lanche (forçado)", "btn_admin_cancelar"),
         ("📝 Novo pedido (forçado)", "btn_admin_pedido"),
+        ("🧒 Gestão de escuteiro", "btn_admin_escuteiro"),
     ])
     st.caption("Use estas ações apenas em casos excecionais; os formulários abrem em modo forçado.")
 
@@ -694,6 +695,8 @@ def dashboard_admin(dados: dict):
         st.session_state["mostrar_form_registo"] = True
     if acoes_admin.get("btn_admin_pedido"):
         st.session_state["mostrar_form_pedido"] = True
+    if acoes_admin.get("btn_admin_escuteiro"):
+        st.session_state["mostrar_form_escuteiro"] = True
 
     mostrar_formulario(
         session_key="mostrar_form_registo",
@@ -707,6 +710,14 @@ def dashboard_admin(dados: dict):
         session_key="mostrar_form_pedido",
         titulo="### 📝 Forçar Novo Pedido",
         iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form",
+        iframe_height=533,
+        container_height=600,
+    )
+
+    mostrar_formulario(
+        session_key="mostrar_form_escuteiro",
+        titulo="### 🧒 Gestão de Escuteiros",
+        iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/shrPjUjxbfjoIcezw",
         iframe_height=533,
         container_height=600,
     )
