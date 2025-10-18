@@ -9,8 +9,6 @@ PAGE_PATHS = {
 
 
 def _hide_streamlit_sidebar_nav() -> None:
-    if st.session_state.get("_lobitos_nav_hidden"):
-        return
     st.markdown(
         """
         <style>
@@ -23,7 +21,6 @@ def _hide_streamlit_sidebar_nav() -> None:
         """,
         unsafe_allow_html=True,
     )
-    st.session_state["_lobitos_nav_hidden"] = True
 
 
 def authenticated_menu() -> None:
