@@ -335,6 +335,10 @@ def dashboard_pais():
         pedidos_mostrar = pedidos_escuteiro.head(5).copy()
         if "__data" in pedidos_mostrar.columns:
             pedidos_mostrar["Data"] = pedidos_mostrar["__data"].dt.strftime("%d/%m/%Y")
+        if "Created" in pedidos_mostrar.columns:
+            horarios = pd.to_datetime(pedidos_mostrar["Created"], errors="coerce")
+            pedidos_mostrar["Hora"] = horarios.dt.strftime("%H:%M").fillna("")
+        elif "__data" in pedidos_mostrar.columns:
             pedidos_mostrar["Hora"] = pedidos_mostrar["__data"].dt.strftime("%H:%M").fillna("")
         for coluna in ["Bebida", "Lanche", "Fruta"]:
             if coluna in pedidos_mostrar.columns:
