@@ -1,11 +1,11 @@
 ﻿import streamlit as st
 
-PAGE_PATHS = {
-    "home": "pages/home.py",
-    "calendario": "pages/2_📅_Calendario.py",
-    "voluntariado": "pages/3_👨‍👩‍👧‍👦_Voluntariado.py",
-    "escuteiros": "pages/4_👦_Escuteiros.py",
-}
+#PAGE_PATHS = {
+#    "home": "pages/home.py",
+#    "calendario": "pages/2_📅_Calendario.py",
+#    "voluntariado": "pages/3_👨‍👩‍👧‍👦_Voluntariado.py",
+#    "escuteiros": "pages/4_👦_Escuteiros.py",
+#}
 
 
 def _hide_streamlit_sidebar_nav() -> None:
