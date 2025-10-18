@@ -1,10 +1,10 @@
-﻿import streamlit as st
+import streamlit as st
 
 PAGE_PATHS = {
     "home": "pages/home.py",
-    "calendario": "pages/2_📅_Calendario.py",
-    "voluntariado": "pages/3_👨‍👩‍👧‍👦_Voluntariado.py",
-    "escuteiros": "pages/4_👦_Escuteiros.py",
+    "calendario": "pages/2_\U0001F4C5_Calendario.py",
+    "voluntariado": "pages/3_\U0001F468\u200d\U0001F469\u200d\U0001F467\u200d\U0001F466_Voluntariado.py",
+    "escuteiros": "pages/4_\U0001F466_Escuteiros.py",
 }
 
 
@@ -28,13 +28,16 @@ def authenticated_menu() -> None:
     _hide_streamlit_sidebar_nav()
 
     st.sidebar.header("Navegação")
-    st.sidebar.page_link(PAGE_PATHS["escuteiros"], label="🧒 Escuteiros")
-    st.sidebar.page_link(PAGE_PATHS["calendario"], label="📅 Calendário")
-    st.sidebar.page_link(PAGE_PATHS["voluntariado"], label="🙋 Voluntariado")
-    st.sidebar.page_link(PAGE_PATHS["home"], label="🏠 Dashboard")
+    st.sidebar.page_link(PAGE_PATHS["escuteiros"], label="\U0001F466 Escuteiros")
+    st.sidebar.page_link(PAGE_PATHS["calendario"], label="\U0001F4C5 Calendário")
+    st.sidebar.page_link(
+        PAGE_PATHS["voluntariado"],
+        label="\U0001F468\u200d\U0001F469\u200d\U0001F467\u200d\U0001F466 Voluntariado",
+    )
+    st.sidebar.page_link(PAGE_PATHS["home"], label="\U0001F3E0 Dashboard")
 
     st.sidebar.markdown("---")
-    if st.sidebar.button("🚪 Terminar sessão"):
+    if st.sidebar.button("\U0001F6AA Terminar sessão"):
         st.session_state.clear()
         st.switch_page("app.py")
 
@@ -42,7 +45,7 @@ def authenticated_menu() -> None:
 def unauthenticated_menu() -> None:
     _hide_streamlit_sidebar_nav()
     st.sidebar.header("Acesso")
-    st.sidebar.page_link("app.py", label="🔑 Login")
+    st.sidebar.page_link("app.py", label="\U0001F511 Login")
 
 
 def menu() -> None:
