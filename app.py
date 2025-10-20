@@ -1,12 +1,15 @@
 import streamlit as st
 from pyairtable import Api
 import toml
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Tuple
 
-st.set_page_config(page_title="Portal Lobitos - Login", page_icon="🐾", layout="centered")
+from menu import _hide_streamlit_sidebar_nav
+
+st.set_page_config(page_title="Portal Lobitos - Login", page_icon="\U0001F43E", layout="centered")
+_hide_streamlit_sidebar_nav()
 
 
-def _obter_airtable_client() -> tuple[Api, str]:
+def _obter_airtable_client() -> Tuple[Api, str]:
     if "AIRTABLE_TOKEN" in st.secrets:
         token = st.secrets["AIRTABLE_TOKEN"]
         base_id = st.secrets["AIRTABLE_BASE_ID"]
@@ -42,16 +45,15 @@ def _checkbox_marcado(valor: Any) -> bool:
     return False
 
 
-
 def _buscar_escuteiros(email: str) -> List[Dict[str, Any]]:
     api, base_id = _obter_airtable_client()
     tabela = api.table(base_id, "Escuteiros")
-    email_filtrado = email.replace("'", "\'")
+    email_filtrado = email.replace("'", "\\'")
     formula = (
-        f"OR("
+        "OR("
         f"LOWER({{Email}})='{email_filtrado}',"
         f"LOWER({{Email Alternativo}})='{email_filtrado}'"
-        f")"
+        ")"
     )
     return tabela.all(formula=formula, max_records=50)
 
@@ -65,62 +67,70 @@ def _determinar_role(registos: List[Dict[str, Any]]) -> str:
     return "pais"
 
 
-st.title("🐾 Portal Lobitos")
+st.title("\U0001F43E Portal Lobitos")
 st.write("Bem-vindo ao Portal dos Lanches Lobitos! Faça login para continuar.")
+st.caption("Pedidos, calendário e voluntariado reunidos num só painel.")
 
-email_input = st.text_input("Email")
+email_input = st.text_input("Email", value=st.session_state.get("login_email", ""))
 senha_input = st.text_input("Senha", type="password")
 
-if st.button("Entrar 🚀"):
+if st.button("Entrar no portal \U0001F680"):
     email_normalizado = _normalizar_email(email_input)
 
     if not email_normalizado or not senha_input:
         st.error("Indique email e senha.")
     else:
-        try:
-            registos = _buscar_escuteiros(email_normalizado)
-        except Exception as exc:
-            st.error(f"Não consegui validar as credenciais: {exc}")
-        else:
-            if not registos:
-                st.error("Não encontrei escuteiros associados a este email.")
+        with st.spinner("A validar credenciais..."):
+            try:
+                registos = _buscar_escuteiros(email_normalizado)
+            except Exception as exc:
+                st.error(f"Não consegui validar as credenciais: {exc}")
             else:
-                correspondencias = []
-                for r in registos:
-                    campos = r.get("fields", {})
-                    senha_registo = campos.get("Senha_Painel")
-                    if senha_registo is None:
-                        continue
-                    if str(senha_registo).strip() == senha_input.strip():
-                        correspondencias.append(r)
-                if not correspondencias:
-                    st.error("Senha incorreta.")
+                if not registos:
+                    st.error("Não encontrei escuteiros associados a este email.")
                 else:
-                    role = _determinar_role(correspondencias)
+                    correspondencias = []
+                    for registo in registos:
+                        campos = registo.get("fields", {})
+                        senha_registo = campos.get("Senha_Painel")
+                        if senha_registo is None:
+                            continue
+                        if str(senha_registo).strip() == senha_input.strip():
+                            correspondencias.append(registo)
 
-                    if role in {"tesoureiro", "admin"}:
-                        escuteiros_ids = [r["id"] for r in registos]
-                        nomes_escuteiros = [
-                            r.get("fields", {}).get("Nome do Escuteiro")
-                            for r in registos
-                            if _campo_com_conteudo(r.get("fields", {}).get("Nome do Escuteiro"))
-                        ]
+                    if not correspondencias:
+                        st.error("Senha incorreta.")
                     else:
-                        escuteiros_ids = [r["id"] for r in correspondencias]
-                        nomes_escuteiros = [
-                            r.get("fields", {}).get("Nome do Escuteiro")
-                            for r in correspondencias
-                            if _campo_com_conteudo(r.get("fields", {}).get("Nome do Escuteiro"))
-                        ]
+                        role = _determinar_role(correspondencias)
 
-                    st.session_state["role"] = role
-                    st.session_state["logged_in"] = True
-                    st.session_state["user"] = {
-                        "email": email_normalizado,
-                        "escuteiros_ids": escuteiros_ids,
-                        "nomes": nomes_escuteiros,
-                        "all_access": role in {"admin", "tesoureiro"},
-                    }
+                        if role in {"tesoureiro", "admin"}:
+                            escuteiros_ids = [registo["id"] for registo in registos]
+                            nomes_escuteiros = [
+                                registo.get("fields", {}).get("Nome do Escuteiro")
+                                for registo in registos
+                                if _campo_com_conteudo(
+                                    registo.get("fields", {}).get("Nome do Escuteiro")
+                                )
+                            ]
+                        else:
+                            escuteiros_ids = [registo["id"] for registo in correspondencias]
+                            nomes_escuteiros = [
+                                registo.get("fields", {}).get("Nome do Escuteiro")
+                                for registo in correspondencias
+                                if _campo_com_conteudo(
+                                    registo.get("fields", {}).get("Nome do Escuteiro")
+                                )
+                            ]
 
-                    st.success(f"✅ Login como {role.capitalize()}!")
-                    st.switch_page("pages/home.py")
+                        st.session_state["login_email"] = email_input
+                        st.session_state["role"] = role
+                        st.session_state["logged_in"] = True
+                        st.session_state["user"] = {
+                            "email": email_normalizado,
+                            "escuteiros_ids": escuteiros_ids,
+                            "nomes": nomes_escuteiros,
+                            "all_access": role in {"admin", "tesoureiro"},
+                        }
+
+                        st.success(f"✨ Login como {role.capitalize()}!")
+                        st.switch_page("pages/home.py")
