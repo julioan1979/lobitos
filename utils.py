@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Iterable, List, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 import pandas as pd
 
@@ -31,7 +32,7 @@ def get_personalized_lanche_links(
         url = row.get(LANCHES_LINK_COLUMN)
         if isinstance(url, list):
             url = url[0] if url else ""
-        url = (url or "").strip()
+        url = _normalize_airtable_form_url(url)
         if not url:
             continue
 
@@ -47,3 +48,24 @@ def get_personalized_lanche_links(
         links.append((nome, url))
 
     return links
+
+
+def _normalize_airtable_form_url(raw_url: str | None) -> str:
+    url = (raw_url or "").strip()
+    if not url:
+        return ""
+    if "/embed/" in url:
+        return url
+
+    parsed = urlsplit(url)
+    scheme = parsed.scheme or "https"
+    netloc = parsed.netloc or "airtable.com"
+    path = parsed.path.lstrip("/")
+
+    if not path:
+        return ""
+
+    if not path.startswith("embed/"):
+        path = f"embed/{path}"
+
+    return urlunsplit((scheme, netloc, f"/{path}", parsed.query, parsed.fragment))
