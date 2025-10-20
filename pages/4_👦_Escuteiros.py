@@ -2,7 +2,16 @@
 import streamlit as st
 from menu import menu_with_redirect
 
+DEFAULT_LANCHE_FORM_URL = "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
+
 menu_with_redirect()
+
+role = st.session_state.get("role")
+user_info = st.session_state.get("user", {})
+allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else set()
+
+if role is None:
+    st.stop()
 
 st.title("🧒 Escuteiros")
 
@@ -144,17 +153,66 @@ st.markdown(
     """
 )
 
-st.components.v1.html(
-    """
-    <iframe class="airtable-embed"
-        src="https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
-        frameborder="0" onmousewheel="" width="100%" height="650"
-        style="background: transparent; border: 1px solid #ccc;">
-    </iframe>
-    """,
-    height=700,
-    scrolling=True,
-)
+df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
+
+if df_escuteiros is None or df_escuteiros.empty or "id" not in df_escuteiros.columns:
+    st.warning("Ainda não existem escuteiros registados ou a tabela está incompleta.")
+else:
+    df_escuteiros = df_escuteiros.copy()
+
+    if allowed_escuteiros:
+        df_escuteiros = df_escuteiros[df_escuteiros["id"].isin(allowed_escuteiros)]
+        if df_escuteiros.empty:
+            st.warning("Não existem dados para os escuteiros associados a esta conta.")
+    elif role == "pais":
+        st.warning("A sua conta ainda não tem escuteiros associados. Contacte a equipa de administração.")
+        df_escuteiros = pd.DataFrame()
+
+    if not df_escuteiros.empty:
+        def _formatar_label(row: pd.Series) -> str:
+            nome = row.get("Nome do Escuteiro")
+            codigo = row.get("ID_Escuteiro")
+            if pd.isna(nome) or not str(nome).strip():
+                nome = "Lobito sem nome"
+            if pd.notna(codigo) and str(codigo).strip():
+                return f"{nome} ({codigo})"
+            return str(nome)
+
+        df_escuteiros["__label"] = df_escuteiros.apply(_formatar_label, axis=1)
+        df_escuteiros = df_escuteiros.sort_values("__label")
+
+        ids = df_escuteiros["id"].tolist()
+        label_por_id = dict(zip(df_escuteiros["id"], df_escuteiros["__label"]))
+
+        sess_key = "escuteiro_form_lanche"
+        if sess_key not in st.session_state or st.session_state[sess_key] not in ids:
+            st.session_state[sess_key] = ids[0]
+
+        escuteiro_id = st.selectbox(
+            "Escolha o Lobito",
+            options=ids,
+            format_func=lambda value: label_por_id.get(value, value),
+            key=sess_key,
+        )
+        escuteiro_row = df_escuteiros[df_escuteiros["id"] == escuteiro_id].iloc[0]
+
+        iframe_src = escuteiro_row.get("Pre_Field escolha semanal lanches", "")
+        if isinstance(iframe_src, list):
+            iframe_src = iframe_src[0] if iframe_src else ""
+        if pd.isna(iframe_src) or not str(iframe_src).strip():
+            iframe_src = DEFAULT_LANCHE_FORM_URL
+
+        st.components.v1.html(
+            f"""
+            <iframe class="airtable-embed"
+                src="{iframe_src}"
+                frameborder="0" onmousewheel="" width="100%" height="650"
+                style="background: transparent; border: 1px solid #ccc;">
+            </iframe>
+            """,
+            height=700,
+            scrolling=True,
+        )
 
 st.markdown("---")
 st.info(

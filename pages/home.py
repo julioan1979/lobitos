@@ -236,11 +236,17 @@ def dashboard_pais():
     if acoes_pais.get("btn_cancelar_lanche"):
         st.session_state["mostrar_form_cancelar"] = True
 
+    url_escolha_lanche = escuteiro_row.get("Pre_Field escolha semanal lanches", "")
+    if isinstance(url_escolha_lanche, list):
+        url_escolha_lanche = url_escolha_lanche[0] if url_escolha_lanche else ""
+    if pd.isna(url_escolha_lanche) or not str(url_escolha_lanche).strip():
+        url_escolha_lanche = "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
+
     # Formulário Escolha dos Lanches
     mostrar_formulario(
         session_key="mostrar_form_lanche",
         titulo="### 🍞 Formulário de Escolha dos Lanches",
-        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form",
+        iframe_url=url_escolha_lanche,
         iframe_height=600,
         container_height=650,
     )
