@@ -1,6 +1,7 @@
 ﻿import pandas as pd
 import streamlit as st
 from menu import menu_with_redirect
+from utils import get_personalized_lanche_links
 
 menu_with_redirect()
 
@@ -8,6 +9,10 @@ st.title("🧒 Escuteiros")
 
 dados = st.session_state.get("dados_cache", {})
 df_recipes = dados.get("Recipes", pd.DataFrame())
+user_info = st.session_state.get("user", {})
+escuteiros_ids = user_info.get("escuteiros_ids", []) if user_info else []
+df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
+lanche_links = get_personalized_lanche_links(df_escuteiros, escuteiros_ids)
 
 def _first_existing(frame: pd.DataFrame, columns: list[str]) -> str | None:
     if frame is None or frame.empty:
@@ -139,22 +144,39 @@ _render_menu_info(_normalizar_data_menu(df_menu))
 
 st.markdown(
     """
-    ### 📄 Formulário de Marcação de Lanche
-    Preencha o formulário abaixo para marcar o lanche do seu escuteiro.
+    ### 🧺 Formulario de Marcacao de Lanche
+    Preencha o formulario abaixo para marcar o lanche do seu escuteiro.
     """
 )
 
-st.components.v1.html(
-    """
-    <iframe class="airtable-embed"
-        src="https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
-        frameborder="0" onmousewheel="" width="100%" height="650"
-        style="background: transparent; border: 1px solid #ccc;">
-    </iframe>
-    """,
-    height=700,
-    scrolling=True,
-)
+iframe_src = ""
+if lanche_links:
+    if len(lanche_links) == 1:
+        idx_selecionado = 0
+    else:
+        idx_selecionado = st.selectbox(
+            "Escolha o escuteiro para preencher o formulario",
+            list(range(len(lanche_links))),
+            format_func=lambda idx: lanche_links[idx][0],
+            key="selecionar_escuteiro_form_lanche",
+        )
+    nome_selecionado, iframe_src = lanche_links[idx_selecionado]
+    st.caption(f"O formulario abaixo ja esta preparado para {nome_selecionado}.")
+
+if iframe_src:
+    st.components.v1.html(
+        f"""
+        <iframe class="airtable-embed"
+            src="{iframe_src}"
+            frameborder="0" onmousewheel="" width="100%" height="650"
+            style="background: transparent; border: 1px solid #ccc;">
+        </iframe>
+        """,
+        height=700,
+        scrolling=True,
+    )
+else:
+    st.info("Sem link de marcacao para os escuteiros selecionados.")
 
 st.markdown("---")
 st.info(

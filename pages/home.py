@@ -5,6 +5,7 @@ import pandas as pd
 from pyairtable import Api
 import toml
 from menu import menu_with_redirect
+from utils import get_personalized_lanche_links
 import locale
 import time
 from datetime import datetime
@@ -123,31 +124,69 @@ def mapear_lista(valor, mapping):
         return ""
     return mapping.get(valor, valor)
 
-def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
+def mostrar_formulario(
+    session_key: str,
+    titulo: str,
+    iframe_url: str,
+    iframe_height: int = 600,
+    container_height=None,
+    opcoes_links: list[tuple[str, str]] | None = None,
+) -> None:
     if not st.session_state.get(session_key, False):
         return
     with st.container(border=True):
         col1, col2 = st.columns([8, 1])
         with col1:
-            st.markdown(titulo)
+            titulo_placeholder = st.empty()
         with col2:
-            if st.button("❌", key=f"fechar_{session_key}"):
+            if st.button("Fechar", key=f"fechar_{session_key}"):
                 st.session_state[session_key] = False
                 st.rerun()
 
+        link_opcoes = opcoes_links or []
+        destino_iframe = iframe_url
+        titulo_render = titulo
+
+        if link_opcoes:
+            opcoes_idx = list(range(len(link_opcoes)))
+            select_key = f"{session_key}_link_idx"
+            idx_default = st.session_state.get(select_key, 0)
+            if not (0 <= idx_default < len(link_opcoes)):
+                idx_default = 0
+            with col1:
+                idx_selecionado = st.selectbox(
+                    "Escolha o escuteiro para preencher o formulario",
+                    opcoes_idx,
+                    index=idx_default,
+                    format_func=lambda idx: link_opcoes[idx][0],
+                    key=select_key,
+                )
+            nome_selecionado, destino_iframe = link_opcoes[idx_selecionado]
+            with col1:
+                st.caption(f"O formulario abaixo ja esta preparado para {nome_selecionado}.")
+            titulo_render = f"{titulo} ({nome_selecionado})"
+
+        titulo_placeholder.markdown(titulo_render)
+
         altura_render = container_height if container_height is not None else iframe_height + 50
 
-        components.html(
-            f"""
-            <iframe class="airtable-embed"
-                src="{iframe_url}"
-                frameborder="0" onmousewheel="" width="100%" height="{iframe_height}"
-                style="background: transparent; border: 1px solid #ccc;">
-            </iframe>
-            """,
-            height=altura_render,
-            scrolling=True,
-        )
+        if destino_iframe:
+            components.html(
+                f"""
+                <iframe class="airtable-embed"
+                    src="{destino_iframe}"
+                    frameborder="0" onmousewheel="" width="100%" height="{iframe_height}"
+                    style="background: transparent; border: 1px solid #ccc;">
+                </iframe>
+                """,
+                height=altura_render,
+                scrolling=True,
+            )
+        else:
+            st.info("Sem link de marcacao disponivel para este formulario.")
+
+
+
 
 
 # ======================
@@ -196,6 +235,12 @@ def dashboard_pais():
     elif role == "pais":
         st.warning("ℹ️ A sua conta ainda não tem escuteiros associados. Contacte a equipa de administração.")
         return
+    lanche_links = get_personalized_lanche_links(
+        df_escuteiros,
+        df_escuteiros["id"].tolist() if "id" in df_escuteiros.columns else None,
+    )
+    iframe_lanche_url = lanche_links[0][1] if lanche_links else ""
+
 
     def _formatar_label(row: pd.Series) -> str:
         nome = row.get("Nome do Escuteiro")
@@ -239,10 +284,11 @@ def dashboard_pais():
     # Formulário Escolha dos Lanches
     mostrar_formulario(
         session_key="mostrar_form_lanche",
-        titulo="### 🍞 Formulário de Escolha dos Lanches",
-        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form",
+        titulo="### 🥞 Formulario de Escolha dos Lanches",
+        iframe_url=iframe_lanche_url,
         iframe_height=600,
         container_height=650,
+        opcoes_links=lanche_links,
     )
 
     # Formulário Cancelar Lanche
