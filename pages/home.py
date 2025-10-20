@@ -8,6 +8,7 @@ from menu import menu_with_redirect
 import locale
 import time
 from datetime import datetime
+from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
 
 import locale
@@ -150,6 +151,36 @@ def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_he
         )
 
 
+def normalizar_url_airtable(valor_url, fallback: str) -> str:
+    """Garante que o URL do Airtable está no formato embed e devolve um fallback se estiver vazio."""
+    bruto = valor_url
+    if isinstance(bruto, list):
+        bruto = bruto[0] if bruto else ""
+    if pd.isna(bruto) or not str(bruto).strip():
+        return fallback
+
+    candidato = str(bruto).strip()
+    try:
+        parsed = urlparse(candidato)
+    except ValueError:
+        return fallback
+
+    if not parsed.netloc:
+        parsed = urlparse(f"https://{candidato.lstrip('/')}")
+    if "airtable.com" not in parsed.netloc:
+        return urlunparse(parsed._replace(scheme=parsed.scheme or "https"))
+
+    path = parsed.path or ""
+    if not path.startswith("/embed/"):
+        path = "/embed/" + path.lstrip("/")
+
+    normalizado = parsed._replace(
+        scheme="https",
+        path=path,
+    )
+    return urlunparse(normalizado)
+
+
 # ======================
 # 3) Cache e botão de refresh
 # ======================
@@ -236,11 +267,10 @@ def dashboard_pais():
     if acoes_pais.get("btn_cancelar_lanche"):
         st.session_state["mostrar_form_cancelar"] = True
 
-    url_escolha_lanche = escuteiro_row.get("Pre_Field escolha semanal lanches", "")
-    if isinstance(url_escolha_lanche, list):
-        url_escolha_lanche = url_escolha_lanche[0] if url_escolha_lanche else ""
-    if pd.isna(url_escolha_lanche) or not str(url_escolha_lanche).strip():
-        url_escolha_lanche = "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
+    url_escolha_lanche = normalizar_url_airtable(
+        escuteiro_row.get("Pre_Field escolha semanal lanches", ""),
+        "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form",
+    )
 
     # Formulário Escolha dos Lanches
     mostrar_formulario(

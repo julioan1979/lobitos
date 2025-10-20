@@ -1,5 +1,6 @@
 ﻿import pandas as pd
 import streamlit as st
+from urllib.parse import urlparse, urlunparse
 from menu import menu_with_redirect
 
 DEFAULT_LANCHE_FORM_URL = "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
@@ -17,6 +18,36 @@ st.title("🧒 Escuteiros")
 
 dados = st.session_state.get("dados_cache", {})
 df_recipes = dados.get("Recipes", pd.DataFrame())
+
+
+def normalizar_url_airtable(valor_url, fallback: str) -> str:
+    bruto = valor_url
+    if isinstance(bruto, list):
+        bruto = bruto[0] if bruto else ""
+    if pd.isna(bruto) or not str(bruto).strip():
+        return fallback
+
+    candidato = str(bruto).strip()
+    try:
+        parsed = urlparse(candidato)
+    except ValueError:
+        return fallback
+
+    if not parsed.netloc:
+        parsed = urlparse(f"https://{candidato.lstrip('/')}")
+    if "airtable.com" not in parsed.netloc:
+        return urlunparse(parsed._replace(scheme=parsed.scheme or "https"))
+
+    path = parsed.path or ""
+    if not path.startswith("/embed/"):
+        path = "/embed/" + path.lstrip("/")
+
+    normalizado = parsed._replace(
+        scheme="https",
+        path=path,
+    )
+    return urlunparse(normalizado)
+
 
 def _first_existing(frame: pd.DataFrame, columns: list[str]) -> str | None:
     if frame is None or frame.empty:
@@ -196,11 +227,10 @@ else:
         )
         escuteiro_row = df_escuteiros[df_escuteiros["id"] == escuteiro_id].iloc[0]
 
-        iframe_src = escuteiro_row.get("Pre_Field escolha semanal lanches", "")
-        if isinstance(iframe_src, list):
-            iframe_src = iframe_src[0] if iframe_src else ""
-        if pd.isna(iframe_src) or not str(iframe_src).strip():
-            iframe_src = DEFAULT_LANCHE_FORM_URL
+        iframe_src = normalizar_url_airtable(
+            escuteiro_row.get("Pre_Field escolha semanal lanches", ""),
+            DEFAULT_LANCHE_FORM_URL,
+        )
 
         st.components.v1.html(
             f"""
