@@ -1,8 +1,18 @@
 ﻿import pandas as pd
 import streamlit as st
+from urllib.parse import urlparse, urlunparse
 from menu import menu_with_redirect
 
 menu_with_redirect()
+
+role = st.session_state.get("role")
+user_info = st.session_state.get("user", {})
+allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else set()
+
+if role is None:
+    st.stop()
+
+DEFAULT_VOLUNT_FORM_URL = "https://airtable.com/embed/appDSu6pj0DJmZSn8/shrFWG14Gyx9kLSP1"
 
 st.title("🙋 Voluntariado dos Pais")
 
@@ -10,6 +20,35 @@ dados = st.session_state.get("dados_cache", {})
 df = dados.get("Voluntariado Pais", pd.DataFrame())
 df_cal = dados.get("Calendario", pd.DataFrame())
 df_esc = dados.get("Escuteiros", pd.DataFrame())
+
+
+def normalizar_url_airtable(valor_url, fallback: str) -> str:
+    bruto = valor_url
+    if isinstance(bruto, list):
+        bruto = bruto[0] if bruto else ""
+    if pd.isna(bruto) or not str(bruto).strip():
+        return fallback
+
+    candidato = str(bruto).strip()
+    try:
+        parsed = urlparse(candidato)
+    except ValueError:
+        return fallback
+
+    if not parsed.netloc:
+        parsed = urlparse(f"https://{candidato.lstrip('/')}")
+    if "airtable.com" not in parsed.netloc:
+        return urlunparse(parsed._replace(scheme=parsed.scheme or "https"))
+
+    path = parsed.path or ""
+    if not path.startswith("/embed/"):
+        path = "/embed/" + path.lstrip("/")
+
+    normalizado = parsed._replace(
+        scheme="https",
+        path=path,
+    )
+    return urlunparse(normalizado)
 
 
 def _first_existing(df: pd.DataFrame, candidates: list[str]) -> str | None:
@@ -74,19 +113,66 @@ if not highlight.empty:
 
 st.markdown(
     """
-    ### ✋ Registar disponibilidade
-    Utilize o formulário abaixo para indicar quando pode ajudar na preparação dos lanches.
+    ### �o< Registar disponibilidade
+    Utilize o formulǭrio abaixo para indicar quando pode ajudar na prepara��ǜo dos lanches.
     """
 )
 
+iframe_src = DEFAULT_VOLUNT_FORM_URL
+
+df_esc_form = df_esc.copy() if df_esc is not None else pd.DataFrame()
+if not df_esc_form.empty and "id" in df_esc_form.columns:
+    if allowed_escuteiros:
+        df_esc_form = df_esc_form[df_esc_form["id"].isin(allowed_escuteiros)]
+        if df_esc_form.empty:
+            st.warning("N�o existem escuteiros associados a esta conta para registar voluntariado.")
+    elif role == "pais":
+        st.warning("A sua conta ainda n�o tem escuteiros associados. Contacte a equipa de administra��o.")
+        df_esc_form = pd.DataFrame()
+
+    if not df_esc_form.empty:
+        def _formatar_label(row: pd.Series) -> str:
+            nome = row.get("Nome do Escuteiro")
+            codigo = row.get("ID_Escuteiro")
+            if pd.isna(nome) or not str(nome).strip():
+                nome = "Lobito sem nome"
+            if pd.notna(codigo) and str(codigo).strip():
+                return f"{nome} ({codigo})"
+            return str(nome)
+
+        df_esc_form = df_esc_form.copy()
+        df_esc_form["__label"] = df_esc_form.apply(_formatar_label, axis=1)
+        df_esc_form = df_esc_form.sort_values("__label")
+
+        ids = df_esc_form["id"].tolist()
+        label_por_id = dict(zip(df_esc_form["id"], df_esc_form["__label"]))
+
+        sess_key = "voluntariado_escuteiro"
+        if sess_key not in st.session_state or st.session_state[sess_key] not in ids:
+            st.session_state[sess_key] = ids[0]
+
+        escuteiro_id = st.selectbox(
+            "Escolha o Lobito",
+            options=ids,
+            format_func=lambda value: label_por_id.get(value, value),
+            key=sess_key,
+        )
+        escuteiro_row = df_esc_form[df_esc_form["id"] == escuteiro_id].iloc[0]
+
+        iframe_src = normalizar_url_airtable(
+            escuteiro_row.get("Link Forms_Voluntariado Pre_Field", ""),
+            DEFAULT_VOLUNT_FORM_URL,
+        )
+
 st.components.v1.html(
-    """
+    f"""
     <iframe class="airtable-embed"
-        src="https://airtable.com/embed/appDSu6pj0DJmZSn8/shrFWG14Gyx9kLSP1"
+        src="{iframe_src}"
         frameborder="0" onmousewheel="" width="100%" height="720"
-        style="background: transparent; border: 1px solid #ccc;">
+        style="background: transparent; border: 1px solid #c;">
     </iframe>
-    """,
+    """
+,
     height=770,
     scrolling=True,
 )
@@ -145,3 +231,6 @@ else:
         use_container_width=True,
         hide_index=True,
     )
+
+
+
