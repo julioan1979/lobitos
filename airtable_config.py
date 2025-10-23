@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -27,6 +28,12 @@ class AirtableContext:
         return self.extras.get(name.upper(), default)
 
 
+def _to_plain_dict(value) -> Dict[str, str]:
+    if isinstance(value, Mapping):
+        return {k: _to_plain_dict(v) for k, v in value.items()}
+    return value
+
+
 def _load_raw_secrets() -> Dict[str, Dict[str, str]]:
     """Obtém os secrets como dicionário (Cloud ou local)."""
     try:
@@ -34,7 +41,7 @@ def _load_raw_secrets() -> Dict[str, Dict[str, str]]:
     except Exception:
         return toml.load(".streamlit/secrets.toml")
     else:
-        return {key: st.secrets[key] for key in keys}  # type: ignore[index]
+        return {key: _to_plain_dict(st.secrets[key]) for key in keys}  # type: ignore[index]
 
 
 def _slug_to_label(slug: str) -> str:
