@@ -80,7 +80,7 @@ def _determinar_role(registos: List[Dict[str, Any]]) -> str:
     def _tem_flag_admin(campos_esc: Dict[str, Any]) -> bool:
         for chave, valor in campos_esc.items():
             if "admin" in chave.lower():
-                if _checkbox_marcado(valor) or _campo_com_conteudo(valor):
+                if _checkbox_marcado(valor):
                     return True
         return False
 
