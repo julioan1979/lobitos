@@ -133,45 +133,16 @@ def set_current_context(key: str) -> None:
 
 
 def ensure_context_selected() -> Optional[AirtableContext]:
-    """
-    Garante que existe uma secção selecionada.
-    Se ainda não houver nenhuma, exibe um seletor e devolve None (o caller deve parar o fluxo).
-    """
+    """Garante que existe alguma secção selecionada; atribui automaticamente se existir apenas uma."""
     ctx = current_context()
     if ctx is not None:
         return ctx
 
     contexts = get_available_contexts()
-    if not contexts:
-        st.error("Nenhuma configuração Airtable encontrada. Crie blocos 'airtable_*' nos secrets.")
-        return None
-
-    if len(contexts) == 1:
+    if contexts and len(contexts) == 1:
         unico = contexts[0]
         set_current_context(unico.key)
         return unico
-
-    st.header("Escolha a secção")
-    st.caption("Selecione o agrupamento e a secção para continuar para o login.")
-
-    opcoes = [f"{c.agrupamento_label} · {c.secao_label}" for c in contexts]
-    indice = st.session_state.get("context_selector_index", 0)
-    indice = max(0, min(indice, len(opcoes) - 1))
-
-    selecionado = st.selectbox(
-        "Secção",
-        options=opcoes,
-        index=indice,
-        key="context_selector_selectbox",
-    )
-    st.session_state["context_selector_index"] = opcoes.index(selecionado)
-
-    if st.button("Continuar para o login", type="primary"):
-        escolhido = contexts[opcoes.index(selecionado)]
-        clear_authentication(keep_context=False)
-        set_current_context(escolhido.key)
-        st.experimental_rerun()
-
     return None
 
 

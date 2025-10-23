@@ -3,20 +3,17 @@ from pyairtable import Api
 from typing import Any, Dict, List, Tuple
 
 from airtable_config import (
+    clear_authentication,
     context_labels,
-    ensure_context_selected,
+    current_context,
+    get_available_contexts,
     get_airtable_credentials,
-    reset_context,
+    set_current_context,
 )
 from menu import _hide_streamlit_sidebar_nav
 
 st.set_page_config(page_title="Portal Lobitos - Login", page_icon="\U0001F43E", layout="centered")
 _hide_streamlit_sidebar_nav()
-
-contexto = ensure_context_selected()
-if contexto is None:
-    st.stop()
-
 
 def _obter_airtable_client() -> Tuple[Api, str]:
     token, base_id = get_airtable_credentials()
@@ -70,18 +67,46 @@ def _determinar_role(registos: List[Dict[str, Any]]) -> str:
     return "pais"
 
 
+contextos_disponiveis = get_available_contexts()
+if not contextos_disponiveis:
+    st.error("Nenhuma configuração Airtable encontrada. Crie blocos 'airtable_*' nos secrets.")
+    st.stop()
+
+contexto_atual = current_context()
+if contexto_atual is None and len(contextos_disponiveis) == 1:
+    set_current_context(contextos_disponiveis[0].key)
+    contexto_atual = contextos_disponiveis[0]
+
+opcoes_contexto = [f"{ctx.agrupamento_label} · {ctx.secao_label}" for ctx in contextos_disponiveis]
+mapa_contexto = {opcao: ctx for opcao, ctx in zip(opcoes_contexto, contextos_disponiveis)}
+indice_default = 0
+if contexto_atual is not None:
+    for idx, ctx in enumerate(contextos_disponiveis):
+        if ctx.key == contexto_atual.key:
+            indice_default = idx
+            break
+
+selecionado_label = st.selectbox(
+    "Secção",
+    options=opcoes_contexto,
+    index=indice_default,
+    key="login_context_selectbox",
+)
+ctx_selecionado = mapa_contexto[selecionado_label]
+if contexto_atual is None or ctx_selecionado.key != contexto_atual.key:
+    set_current_context(ctx_selecionado.key)
+    clear_authentication(keep_context=True)
+    contexto_atual = ctx_selecionado
+
+
+
 secao_legenda = context_labels() or "Portal"
-st.title(f"\U0001F43E {contexto.secao_label} - Portal")
+titulo_ctx = contexto_atual.secao_label if contexto_atual else "Portal"
+st.title(f"\U0001F43E {titulo_ctx} - Portal")
 st.write("Bem-vindo! Faça login para continuar.")
 st.caption("Pedidos, calendários e voluntariado reunidos num só painel.")
 
-info_col, trocar_col = st.columns([1, 1], gap="small")
-with info_col:
-    st.info(secao_legenda)
-with trocar_col:
-    if st.button("Trocar secção", type="secondary"):
-        reset_context()
-        st.experimental_rerun()
+st.info(secao_legenda)
 
 email_input = st.text_input("Email", value=st.session_state.get("login_email", ""))
 senha_input = st.text_input("Senha", type="password")
