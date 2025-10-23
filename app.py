@@ -1,22 +1,25 @@
 import streamlit as st
 from pyairtable import Api
-import toml
 from typing import Any, Dict, List, Tuple
 
+from airtable_config import (
+    context_labels,
+    ensure_context_selected,
+    get_airtable_credentials,
+    reset_context,
+)
 from menu import _hide_streamlit_sidebar_nav
 
 st.set_page_config(page_title="Portal Lobitos - Login", page_icon="\U0001F43E", layout="centered")
 _hide_streamlit_sidebar_nav()
 
+contexto = ensure_context_selected()
+if contexto is None:
+    st.stop()
+
 
 def _obter_airtable_client() -> Tuple[Api, str]:
-    if "AIRTABLE_TOKEN" in st.secrets:
-        token = st.secrets["AIRTABLE_TOKEN"]
-        base_id = st.secrets["AIRTABLE_BASE_ID"]
-    else:
-        secrets = toml.load(".streamlit/secrets.toml")
-        token = secrets["AIRTABLE_TOKEN"]
-        base_id = secrets["AIRTABLE_BASE_ID"]
+    token, base_id = get_airtable_credentials()
     return Api(token), base_id
 
 
@@ -67,9 +70,18 @@ def _determinar_role(registos: List[Dict[str, Any]]) -> str:
     return "pais"
 
 
-st.title("\U0001F43E Portal Lobitos")
-st.write("Bem-vindo ao Portal dos Lanches Lobitos! Faça login para continuar.")
-st.caption("Pedidos, calendário e voluntariado reunidos num só painel.")
+secao_legenda = context_labels() or "Portal"
+st.title(f"\U0001F43E {contexto.secao_label} - Portal")
+st.write("Bem-vindo! Faça login para continuar.")
+st.caption("Pedidos, calendários e voluntariado reunidos num só painel.")
+
+info_col, trocar_col = st.columns([1, 1], gap="small")
+with info_col:
+    st.info(secao_legenda)
+with trocar_col:
+    if st.button("Trocar secção", type="secondary"):
+        reset_context()
+        st.experimental_rerun()
 
 email_input = st.text_input("Email", value=st.session_state.get("login_email", ""))
 senha_input = st.text_input("Senha", type="password")

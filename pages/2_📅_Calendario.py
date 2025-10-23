@@ -1,8 +1,13 @@
 ﻿import pandas as pd
 import streamlit as st
 from menu import menu_with_redirect
+from airtable_config import context_labels
 
 menu_with_redirect()
+
+secao_info = context_labels()
+if secao_info:
+    st.caption(secao_info)
 
 st.title("📅 Calendário de Atividades")
 

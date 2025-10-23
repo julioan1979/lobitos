@@ -3,13 +3,13 @@
 import streamlit as st
 import pandas as pd
 from pyairtable import Api
-import toml
 from menu import menu_with_redirect
 import locale
 import time
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
+from airtable_config import context_extra, context_labels, current_context, get_airtable_credentials
 
 import locale
 
@@ -43,14 +43,16 @@ if role is None:
 # ======================
 # 2) Função para carregar dados do Airtable
 # ======================
-if "AIRTABLE_TOKEN" in st.secrets:
-    AIRTABLE_TOKEN = st.secrets["AIRTABLE_TOKEN"]
-    BASE_ID = st.secrets["AIRTABLE_BASE_ID"]
-else:
-    secrets = toml.load(".streamlit/secrets.toml")
-    AIRTABLE_TOKEN = secrets["AIRTABLE_TOKEN"]
-    BASE_ID = secrets["AIRTABLE_BASE_ID"]
+contexto_atual = current_context()
+if contexto_atual is None:
+    st.switch_page("app.py")
+    st.stop()
 
+DEFAULT_LANCHE_FORM_URL = context_extra("DEFAULT_LANCHE_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form") or "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
+secao_legenda = context_labels()
+if secao_legenda:
+    st.caption(secao_legenda)
+AIRTABLE_TOKEN, BASE_ID = get_airtable_credentials()
 api = Api(AIRTABLE_TOKEN)
 
 def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
@@ -181,6 +183,11 @@ def normalizar_url_airtable(valor_url, fallback: str) -> str:
     return urlunparse(normalizado)
 
 
+def obter_form_url(extra_key: str, default: str) -> str:
+    """Obtém URL de formulário a partir dos extras da secção, com fallback."""
+    return context_extra(extra_key, default) or default
+
+
 # ======================
 # 3) Cache e botão de refresh
 # ======================
@@ -269,7 +276,7 @@ def dashboard_pais():
 
     url_escolha_lanche = normalizar_url_airtable(
         escuteiro_row.get("Pre_Field escolha semanal lanches", ""),
-        "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form",
+        DEFAULT_LANCHE_FORM_URL,
     )
 
     # Formulário Escolha dos Lanches
@@ -285,7 +292,7 @@ def dashboard_pais():
     mostrar_formulario(
         session_key="mostrar_form_cancelar",
         titulo="### ❌ Formulário de Cancelamento de Lanche",
-        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/shr5niXN6y71jcFRu",
+        iframe_url=obter_form_url("CANCEL_LANCHE_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/shr5niXN6y71jcFRu"),
         iframe_height=533,
         container_height=650,
     )
@@ -516,7 +523,7 @@ def dashboard_tesoureiro(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_receb",
         titulo="### 📋 Formulário de Recebimento",
-        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/shrJKmfQLKx223tjS",
+        iframe_url=obter_form_url("RECEBIMENTO_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/shrJKmfQLKx223tjS"),
         iframe_height=600,
         container_height=650,
     )
@@ -526,7 +533,7 @@ def dashboard_tesoureiro(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_estorno",
         titulo="### 📋 Formulário de Estorno",
-        iframe_url="https://airtable.com/embed/appzwzHD5YUCyIx63/shrWikw7lhXnZFnL6",
+        iframe_url=obter_form_url("ESTORNO_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/shrWikw7lhXnZFnL6"),
         iframe_height=600,
         container_height=650,
     )
@@ -740,7 +747,7 @@ def dashboard_admin(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_registo",
         titulo="### 🗂️ Cancelamento de Lanche (Forçado)",
-        iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pagsw4PQrv9RaTdJS/form",
+        iframe_url=obter_form_url("FORCED_CANCEL_FORM_URL", "https://airtable.com/embed/appDSu6pj0DJmZSn8/pagsw4PQrv9RaTdJS/form"),
         iframe_height=533,
         container_height=600,
     )
@@ -748,7 +755,7 @@ def dashboard_admin(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_pedido",
         titulo="### 📝 Forçar Novo Pedido",
-        iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form",
+        iframe_url=obter_form_url("FORCED_ORDER_FORM_URL", "https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form"),
         iframe_height=533,
         container_height=600,
     )
@@ -756,7 +763,7 @@ def dashboard_admin(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_escuteiro",
         titulo="### 🧒 Gestão de Escuteiros",
-        iframe_url="https://airtable.com/embed/appDSu6pj0DJmZSn8/shrPjUjxbfjoIcezw",
+        iframe_url=obter_form_url("MANAGE_ESCUTEIROS_FORM_URL", "https://airtable.com/embed/appDSu6pj0DJmZSn8/shrPjUjxbfjoIcezw"),
         iframe_height=533,
         container_height=600,
     )

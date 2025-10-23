@@ -2,10 +2,15 @@
 import streamlit as st
 from urllib.parse import urlparse, urlunparse
 from menu import menu_with_redirect
+from airtable_config import context_extra, context_labels
 
-DEFAULT_LANCHE_FORM_URL = "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
+DEFAULT_LANCHE_FORM_URL = context_extra("DEFAULT_LANCHE_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form") or "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
 
 menu_with_redirect()
+
+secao_info = context_labels()
+if secao_info:
+    st.caption(secao_info)
 
 role = st.session_state.get("role")
 user_info = st.session_state.get("user", {})

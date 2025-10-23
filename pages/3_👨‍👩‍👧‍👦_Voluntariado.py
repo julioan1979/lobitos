@@ -2,8 +2,13 @@
 import streamlit as st
 from urllib.parse import urlparse, urlunparse
 from menu import menu_with_redirect
+from airtable_config import context_extra, context_labels
 
 menu_with_redirect()
+
+secao_info = context_labels()
+if secao_info:
+    st.caption(secao_info)
 
 role = st.session_state.get("role")
 user_info = st.session_state.get("user", {})
@@ -12,7 +17,7 @@ allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else 
 if role is None:
     st.stop()
 
-DEFAULT_VOLUNT_FORM_URL = "https://airtable.com/embed/appDSu6pj0DJmZSn8/shrFWG14Gyx9kLSP1"
+DEFAULT_VOLUNT_FORM_URL = context_extra("DEFAULT_VOLUNT_FORM_URL", "https://airtable.com/embed/appDSu6pj0DJmZSn8/shrFWG14Gyx9kLSP1") or "https://airtable.com/embed/appDSu6pj0DJmZSn8/shrFWG14Gyx9kLSP1"
 
 st.title("🙋 Voluntariado dos Pais")
 
@@ -113,8 +118,8 @@ if not highlight.empty:
 
 st.markdown(
     """
-    ### �o< Registar disponibilidade
-    Utilize o formulǭrio abaixo para indicar quando pode ajudar na prepara��ǜo dos lanches.
+    ### ✍️ Registar disponibilidade
+    Utilize o formulário abaixo para indicar quando pode ajudar na preparação dos lanches.
     """
 )
 
