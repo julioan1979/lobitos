@@ -37,11 +37,27 @@ def _campo_com_conteudo(valor: Any) -> bool:
 
 
 def _checkbox_marcado(valor: Any) -> bool:
-    """Reconhece checkboxes marcados, incluindo lookups que devolvem listas."""
+    """Reconhece checkboxes marcados, incluindo lookups em formatos diversos."""
     if isinstance(valor, bool):
         return valor
     if isinstance(valor, list):
-        return any(isinstance(item, bool) and item for item in valor)
+        return any(_checkbox_marcado(item) for item in valor)
+    if isinstance(valor, (int, float)):
+        return valor != 0
+    if isinstance(valor, str):
+        normalizado = valor.strip().lower()
+        return normalizado in {
+            "true",
+            "1",
+            "yes",
+            "y",
+            "sim",
+            "checked",
+            "marcado",
+            "✅",
+            "✔",
+            "☑",
+        }
     return False
 
 
@@ -60,11 +76,30 @@ def _buscar_escuteiros(email: str) -> List[Dict[str, Any]]:
 
 def _determinar_role(registos: List[Dict[str, Any]]) -> str:
     campos = [r.get("fields", {}) for r in registos]
-    if any(_checkbox_marcado(f.get("Admin")) for f in campos):
+
+    def _tem_flag_admin(campos_esc: Dict[str, Any]) -> bool:
+        for chave, valor in campos_esc.items():
+            if "admin" in chave.lower():
+                if _checkbox_marcado(valor) or _campo_com_conteudo(valor):
+                    return True
+        return False
+
+    if any(_tem_flag_admin(f) for f in campos):
         return "admin"
-    if any(_campo_com_conteudo(f.get("CPP_Tesoureiros")) for f in campos):
+
+    def _tem_flag_tesoureiro(campos_esc: Dict[str, Any]) -> bool:
+        for chave, valor in campos_esc.items():
+            chave_low = chave.lower()
+            if "tesoureiro" in chave_low or "tesouraria" in chave_low:
+                if _checkbox_marcado(valor) or _campo_com_conteudo(valor):
+                    return True
+        return False
+
+    if any(_tem_flag_tesoureiro(f) for f in campos):
         return "tesoureiro"
+
     return "pais"
+
 
 
 contextos_disponiveis = get_available_contexts()
@@ -97,7 +132,6 @@ if contexto_atual is None or ctx_selecionado.key != contexto_atual.key:
     set_current_context(ctx_selecionado.key)
     clear_authentication(keep_context=True)
     contexto_atual = ctx_selecionado
-
 
 
 secao_legenda = context_labels() or "Portal"
