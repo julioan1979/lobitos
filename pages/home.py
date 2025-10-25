@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
-from airtable_config import context_extra, context_labels, current_context, get_airtable_credentials
+from airtable_config import context_labels, current_context, get_airtable_credentials, resolve_form_url
 
 import locale
 
@@ -48,7 +48,7 @@ if contexto_atual is None:
     st.switch_page("app.py")
     st.stop()
 
-DEFAULT_LANCHE_FORM_URL = context_extra("DEFAULT_LANCHE_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form") or "https://airtable.com/embed/appzwzHD5YUCyIx63/pagYSCRWOlZSk5hW8/form"
+DEFAULT_LANCHE_FORM_URL = resolve_form_url("DEFAULT_LANCHE_FORM_URL", "Formulário de Escolha dos Lanches")
 secao_legenda = context_labels()
 if secao_legenda:
     st.caption(secao_legenda)
@@ -183,9 +183,9 @@ def normalizar_url_airtable(valor_url, fallback: str) -> str:
     return urlunparse(normalizado)
 
 
-def obter_form_url(extra_key: str, default: str) -> str:
-    """Obtém URL de formulário a partir dos extras da secção, com fallback."""
-    return context_extra(extra_key, default) or default
+def obter_form_url(extra_key: str, label: str) -> str:
+    """Obtém URL de formulário a partir dos extras da secção, validando obrigatoriedade."""
+    return resolve_form_url(extra_key, label)
 
 
 # ======================
@@ -292,7 +292,7 @@ def dashboard_pais():
     mostrar_formulario(
         session_key="mostrar_form_cancelar",
         titulo="### ❌ Formulário de Cancelamento de Lanche",
-        iframe_url=obter_form_url("CANCEL_LANCHE_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/shr5niXN6y71jcFRu"),
+        iframe_url=obter_form_url("CANCEL_LANCHE_FORM_URL", "Formulário de Cancelamento de Lanche"),
         iframe_height=533,
         container_height=650,
     )
@@ -523,7 +523,7 @@ def dashboard_tesoureiro(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_receb",
         titulo="### 📋 Formulário de Recebimento",
-        iframe_url=obter_form_url("RECEBIMENTO_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/shrJKmfQLKx223tjS"),
+        iframe_url=obter_form_url("RECEBIMENTO_FORM_URL", "Formulário de Recebimento"),
         iframe_height=600,
         container_height=650,
     )
@@ -533,7 +533,7 @@ def dashboard_tesoureiro(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_estorno",
         titulo="### 📋 Formulário de Estorno",
-        iframe_url=obter_form_url("ESTORNO_FORM_URL", "https://airtable.com/embed/appzwzHD5YUCyIx63/shrWikw7lhXnZFnL6"),
+        iframe_url=obter_form_url("ESTORNO_FORM_URL", "Formulário de Estorno"),
         iframe_height=600,
         container_height=650,
     )
@@ -747,7 +747,7 @@ def dashboard_admin(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_registo",
         titulo="### 🗂️ Cancelamento de Lanche (Forçado)",
-        iframe_url=obter_form_url("FORCED_CANCEL_FORM_URL", "https://airtable.com/embed/appDSu6pj0DJmZSn8/pagsw4PQrv9RaTdJS/form"),
+        iframe_url=obter_form_url("FORCED_CANCEL_FORM_URL", "Cancelamento de Lanche (forçado)"),
         iframe_height=533,
         container_height=600,
     )
@@ -755,7 +755,7 @@ def dashboard_admin(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_pedido",
         titulo="### 📝 Forçar Novo Pedido",
-        iframe_url=obter_form_url("FORCED_ORDER_FORM_URL", "https://airtable.com/embed/appDSu6pj0DJmZSn8/pag7lEBWX2SdxlWXn/form"),
+        iframe_url=obter_form_url("FORCED_ORDER_FORM_URL", "Forçar novo pedido"),
         iframe_height=533,
         container_height=600,
     )
@@ -763,7 +763,7 @@ def dashboard_admin(dados: dict):
     mostrar_formulario(
         session_key="mostrar_form_escuteiro",
         titulo="### 🧒 Gestão de Escuteiros",
-        iframe_url=obter_form_url("MANAGE_ESCUTEIROS_FORM_URL", "https://airtable.com/embed/appDSu6pj0DJmZSn8/shrPjUjxbfjoIcezw"),
+        iframe_url=obter_form_url("MANAGE_ESCUTEIROS_FORM_URL", "Gestão de Escuteiros"),
         iframe_height=533,
         container_height=600,
     )

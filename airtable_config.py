@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 import streamlit as st
 import toml
 
+
 SESSION_CONTEXT_KEY = "airtable_context_key"
 
 
@@ -177,4 +178,24 @@ def context_extra(name: str, default: Optional[str] = None) -> Optional[str]:
     ctx = current_context()
     if ctx is None:
         return default
-    return ctx.extra(name, default)
+    value = ctx.extra(name, None)
+    if value is None or str(value).strip() == "":
+        return default
+    return value
+
+
+def resolve_form_url(name: str, display_name: Optional[str] = None) -> str:
+    ctx = current_context()
+    if ctx is None:
+        st.error("Nenhuma secção selecionada. Volte ao ecrã de login.")
+        st.stop()
+
+    value = ctx.extra(name, None)
+    if value is None or not str(value).strip():
+        label = display_name or name
+        st.error(
+            f"A configuração '{label}' não foi definida para a secção "
+            f"{ctx.agrupamento_label} · {ctx.secao_label}. Atualize os secrets no Streamlit."
+        )
+        st.stop()
+    return str(value).strip()

@@ -1,8 +1,8 @@
-Ôªøimport pandas as pd
+import pandas as pd
 import streamlit as st
 from urllib.parse import urlparse, urlunparse
 from menu import menu_with_redirect
-from airtable_config import context_extra, context_labels
+from airtable_config import context_labels, resolve_form_url
 
 menu_with_redirect()
 
@@ -17,9 +17,9 @@ allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else 
 if role is None:
     st.stop()
 
-DEFAULT_VOLUNT_FORM_URL = context_extra("DEFAULT_VOLUNT_FORM_URL", "https://airtable.com/embed/appDSu6pj0DJmZSn8/shrFWG14Gyx9kLSP1") or "https://airtable.com/embed/appDSu6pj0DJmZSn8/shrFWG14Gyx9kLSP1"
+DEFAULT_VOLUNT_FORM_URL = resolve_form_url("DEFAULT_VOLUNT_FORM_URL", "Formulario de Voluntariado")
 
-st.title("üôã Voluntariado dos Pais")
+st.title("?? Voluntariado dos Pais")
 
 dados = st.session_state.get("dados_cache", {})
 df = dados.get("Voluntariado Pais", pd.DataFrame())
@@ -64,7 +64,7 @@ def _first_existing(df: pd.DataFrame, candidates: list[str]) -> str | None:
 
 
 if df is None or df.empty:
-    st.info("Ainda n√£o existem volunt√°rios registados.")
+    st.info("Ainda n„o existem volunt·rios registados.")
     df_valid = pd.DataFrame()
 else:
     df_valid = df.copy()
@@ -78,14 +78,14 @@ else:
 
 highlight = df_valid.head(3) if not df_valid.empty else pd.DataFrame()
 if not highlight.empty:
-    st.markdown("### üéâ Obrigado aos √∫ltimos volunt√°rios!")
+    st.markdown("### ?? Obrigado aos ˙ltimos volunt·rios!")
     col_link = _first_existing(
         df_valid,
         [
-            "Record_ID Calend√°rio (from Date ( calend√°rio ))",
-            "Record_ID Calend√°rio (from Date (calend√°rio))",
-            "Date ( calend√°rio )",
-            "Date (calend√°rio)",
+            "Record_ID Calend·rio (from Date ( calend·rio ))",
+            "Record_ID Calend·rio (from Date (calend·rio))",
+            "Date ( calend·rio )",
+            "Date (calend·rio)",
         ],
     )
     if col_link and not df_cal.empty and "id" in df_cal.columns:
@@ -95,7 +95,7 @@ if not highlight.empty:
 
     cols = st.columns(len(highlight))
     for col, (_, row) in zip(cols, highlight.iterrows()):
-        nome = str(row.get("Pais", "Fam√≠lia solid√°ria")).strip() or "Fam√≠lia solid√°ria"
+        nome = str(row.get("Pais", "FamÌlia solid·ria")).strip() or "FamÌlia solid·ria"
         datas = []
         if col_link:
             eventos = row.get(col_link)
@@ -112,14 +112,14 @@ if not highlight.empty:
         data_txt = ", ".join(datas) if datas else "data a confirmar"
         with col:
             st.markdown(
-                f"#### üöÄ {nome}\n" f"<small>{data_txt}</small>",
+                f"#### ?? {nome}\n" f"<small>{data_txt}</small>",
                 unsafe_allow_html=True,
             )
 
 st.markdown(
     """
-    ### ‚úçÔ∏è Registar disponibilidade
-    Utilize o formul√°rio abaixo para indicar quando pode ajudar na prepara√ß√£o dos lanches.
+    ### ?? Registar disponibilidade
+    Utilize o formul·rio abaixo para indicar quando pode ajudar na preparaÁ„o dos lanches.
     """
 )
 
@@ -130,9 +130,9 @@ if not df_esc_form.empty and "id" in df_esc_form.columns:
     if allowed_escuteiros:
         df_esc_form = df_esc_form[df_esc_form["id"].isin(allowed_escuteiros)]
         if df_esc_form.empty:
-            st.warning("NÔøΩo existem escuteiros associados a esta conta para registar voluntariado.")
+            st.warning("N?o existem escuteiros associados a esta conta para registar voluntariado.")
     elif role == "pais":
-        st.warning("A sua conta ainda nÔøΩo tem escuteiros associados. Contacte a equipa de administraÔøΩÔøΩo.")
+        st.warning("A sua conta ainda n?o tem escuteiros associados. Contacte a equipa de administra??o.")
         df_esc_form = pd.DataFrame()
 
     if not df_esc_form.empty:
@@ -183,7 +183,7 @@ st.components.v1.html(
 )
 
 st.markdown("---")
-st.markdown("### üóíÔ∏è Registos recentes")
+st.markdown("### ??? Registos recentes")
 
 def _normalizar_lista(valor):
     if isinstance(valor, list):
@@ -194,11 +194,11 @@ def _normalizar_lista(valor):
 
 
 if df is None or df.empty:
-    st.info("Ainda n√£o existem volunt√°rios registados.")
+    st.info("Ainda n„o existem volunt·rios registados.")
 else:
     df_vis = df.copy()
 
-    if "Date (calend√°rio)" in df_vis.columns and not df_cal.empty and "id" in df_cal.columns:
+    if "Date (calend·rio)" in df_vis.columns and not df_cal.empty and "id" in df_cal.columns:
         cal_map = df_cal.set_index("id").get("Data", pd.Series(dtype=str)).to_dict()
 
         def _mapear_datas(valor):
@@ -206,7 +206,7 @@ else:
             datas = [pd.to_datetime(cal_map.get(v), errors="coerce") for v in datas_ids]
             return ", ".join(d.strftime("%d/%m/%Y") for d in datas if not pd.isna(d))
 
-        df_vis["Datas"] = df_vis["Date (calend√°rio)"].apply(_mapear_datas)
+        df_vis["Datas"] = df_vis["Date (calend·rio)"].apply(_mapear_datas)
 
     esc_map = {}
     if df_esc is not None and not df_esc.empty and "id" in df_esc.columns:
