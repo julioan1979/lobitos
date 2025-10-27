@@ -605,13 +605,27 @@ def dashboard_tesoureiro(dados: dict):
     # Ranking de Escuteiros
     st.markdown("### 🏆 Ranking de Escuteiros")
     if not df_tes.empty and "Conta Corrente" in df_tes.columns and "Escuteiro" in df_tes.columns:
-        top_ricos = df_tes.sort_values("Conta Corrente", ascending=False).head(5).copy()
-        df_divida = df_tes[df_tes["Conta Corrente"] < 0].sort_values("Conta Corrente", ascending=True).head(5).copy()
+        df_ranking = df_tes.copy()
+        df_ranking["__saldo"] = pd.to_numeric(df_ranking["Conta Corrente"], errors="coerce").fillna(0)
+
+        top_ricos = (
+            df_ranking[df_ranking["__saldo"] > 0]
+            .sort_values("__saldo", ascending=False)
+            .head(5)
+            .copy()
+        )
+        df_divida = (
+            df_ranking[df_ranking["__saldo"] < 0]
+            .sort_values("__saldo", ascending=True)
+            .head(5)
+            .copy()
+        )
 
         # formatar como moeda
         for df_temp in [top_ricos, df_divida]:
             if not df_temp.empty:
-                df_temp["Conta Corrente"] = pd.to_numeric(df_temp["Conta Corrente"], errors="coerce").map("{:.2f} €".format)
+                df_temp["Conta Corrente"] = df_temp["__saldo"].map(lambda valor: f"{valor:.2f} €")
+                df_temp.drop(columns="__saldo", inplace=True)
 
         col1, col2 = st.columns(2)
 
@@ -623,7 +637,7 @@ def dashboard_tesoureiro(dados: dict):
                 )
                 st.table(styler_ricos)
             else:
-                st.info("ℹ️  Nenhum escuteiro com saldo.")
+                st.info("ℹ️ Nenhum escuteiro com saldo positivo.")
 
         with col2:
             st.subheader("🚨 Top 5 em dívida")
