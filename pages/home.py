@@ -30,6 +30,12 @@ menu_with_redirect()
 role = st.session_state.get("role")
 user_info = st.session_state.get("user", {})
 allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else set()
+permissions = st.session_state.get("permissions", {})
+is_admin = bool(permissions.get("admin"))
+is_tesoureiro = bool(permissions.get("tesoureiro"))
+if not permissions:
+    is_admin = role == "admin"
+    is_tesoureiro = role == "tesoureiro"
 
 if role is None:
     st.stop()
@@ -1151,16 +1157,21 @@ def dashboard_admin(dados: dict):
 # ======================
 # 5) Mostrar dashboards consoante role
 # ======================
-if role == "admin":
-    dashboard_admin(dados)
-    st.divider()
-    dashboard_tesoureiro(dados)
-    st.divider()
-    dashboard_pais()
-elif role == "tesoureiro":
-    dashboard_tesoureiro(dados)
-    st.divider()
-    dashboard_pais()
-elif role == "pais":
-    dashboard_pais()
+sections_a_mostrar: list[str] = []
+if is_admin:
+    sections_a_mostrar.append("admin")
+if is_tesoureiro:
+    sections_a_mostrar.append("tesoureiro")
+sections_a_mostrar.append("pais")
+
+for idx, sec in enumerate(sections_a_mostrar):
+    if sec == "admin":
+        dashboard_admin(dados)
+    elif sec == "tesoureiro":
+        dashboard_tesoureiro(dados)
+    else:
+        dashboard_pais()
+
+    if idx < len(sections_a_mostrar) - 1:
+        st.divider()
 

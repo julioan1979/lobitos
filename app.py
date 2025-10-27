@@ -36,6 +36,13 @@ def _campo_com_conteudo(valor: Any) -> bool:
     return False
 
 
+def _extrair_permissoes(registos: List[Dict[str, Any]]) -> Tuple[bool, bool]:
+    campos = [r.get("fields", {}) for r in registos]
+    is_admin = any(_checkbox_marcado(campos_esc.get("Admin")) for campos_esc in campos)
+    is_tesoureiro = any(_checkbox_marcado(campos_esc.get("Tesoureiro")) for campos_esc in campos)
+    return is_admin, is_tesoureiro
+
+
 def _checkbox_marcado(valor: Any) -> bool:
     """Reconhece checkboxes marcados, incluindo lookups em formatos diversos."""
     if isinstance(valor, bool):
@@ -72,34 +79,6 @@ def _buscar_escuteiros(email: str) -> List[Dict[str, Any]]:
         ")"
     )
     return tabela.all(formula=formula, max_records=50)
-
-
-def _determinar_role(registos: List[Dict[str, Any]]) -> str:
-    campos = [r.get("fields", {}) for r in registos]
-
-    def _tem_flag_admin(campos_esc: Dict[str, Any]) -> bool:
-        for chave, valor in campos_esc.items():
-            if "admin" in chave.lower():
-                if _checkbox_marcado(valor):
-                    return True
-        return False
-
-    if any(_tem_flag_admin(f) for f in campos):
-        return "admin"
-
-    def _tem_flag_tesoureiro(campos_esc: Dict[str, Any]) -> bool:
-        for chave, valor in campos_esc.items():
-            chave_low = chave.lower()
-            if "tesoureiro" in chave_low or "tesouraria" in chave_low:
-                if _checkbox_marcado(valor) or _campo_com_conteudo(valor):
-                    return True
-        return False
-
-    if any(_tem_flag_tesoureiro(f) for f in campos):
-        return "tesoureiro"
-
-    return "pais"
-
 
 
 contextos_disponiveis = get_available_contexts()
@@ -172,9 +151,10 @@ if st.button("Entrar no portal \U0001F680"):
                     if not correspondencias:
                         st.error("Senha incorreta.")
                     else:
-                        role = _determinar_role(correspondencias)
+                        is_admin, is_tesoureiro = _extrair_permissoes(correspondencias)
+                        role = "admin" if is_admin else "tesoureiro" if is_tesoureiro else "pais"
 
-                        if role in {"tesoureiro", "admin"}:
+                        if is_admin or is_tesoureiro:
                             escuteiros_ids = [registo["id"] for registo in registos]
                             nomes_escuteiros = [
                                 registo.get("fields", {}).get("Nome do Escuteiro")
@@ -195,12 +175,16 @@ if st.button("Entrar no portal \U0001F680"):
 
                         st.session_state["login_email"] = email_input
                         st.session_state["role"] = role
+                        st.session_state["permissions"] = {
+                            "admin": is_admin,
+                            "tesoureiro": is_tesoureiro,
+                        }
                         st.session_state["logged_in"] = True
                         st.session_state["user"] = {
                             "email": email_normalizado,
                             "escuteiros_ids": escuteiros_ids,
                             "nomes": nomes_escuteiros,
-                            "all_access": role in {"admin", "tesoureiro"},
+                            "all_access": is_admin or is_tesoureiro,
                         }
 
                         st.success(f"✨ Login como {role.capitalize()}!")
