@@ -4,7 +4,7 @@ from urllib.parse import urlparse, urlunparse
 from menu import menu_with_redirect
 from airtable_config import context_labels, resolve_form_url
 
-DEFAULT_LANCHE_FORM_URL = resolve_form_url("DEFAULT_LANCHE_FORM_URL", "Formulario de Escolha dos Lanches")
+DEFAULT_LANCHE_FORM_URL = resolve_form_url("DEFAULT_LANCHE_FORM_URL", "Formul√°rio de Escolha dos Lanches")
 
 menu_with_redirect()
 
@@ -19,7 +19,7 @@ allowed_escuteiros = set(user_info.get("escuteiros_ids", [])) if user_info else 
 if role is None:
     st.stop()
 
-st.title("?? Escuteiros")
+st.title("Escuteiros")
 
 dados = st.session_state.get("dados_cache", {})
 df_recipes = dados.get("Recipes", pd.DataFrame())
@@ -70,10 +70,10 @@ if recipes_name_col:
 
 
 possible_date_columns = [
-    "Date (from PublicaÁ„o Filtro)",
-    "Date (from MarcaÁ„o dos Pais na preparaÁ„o do Lanche)",
-    "Date ( calend·rio )",
-    "Date (calend·rio)",
+    "Date (from Publica√ß√£o Filtro)",
+    "Date (from Marca√ß√£o dos Pais na prepara√ß√£o do Lanche)",
+    "Date ( calend√°rio )",
+    "Date (calend√°rio)",
     "Date",
 ]
 
@@ -184,24 +184,24 @@ _render_menu_info(_normalizar_data_menu(df_menu))
 
 st.markdown(
     """
-    ### ?? Formulario de MarcaÁ„o de Lanche
-    Preencha o formul·rio abaixo para marcar o lanche do seu escuteiro.
+    ### Formul√°rio de Marca√ß√£o de Lanche
+    Preencha o formul√°rio abaixo para marcar o lanche do seu escuteiro.
     """
 )
 
 df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
 
 if df_escuteiros is None or df_escuteiros.empty or "id" not in df_escuteiros.columns:
-    st.warning("Ainda n„o existem escuteiros registados ou a tabela est· incompleta.")
+    st.warning("Ainda n√£o existem escuteiros registados ou a tabela est√° incompleta.")
 else:
     df_escuteiros = df_escuteiros.copy()
 
     if allowed_escuteiros:
         df_escuteiros = df_escuteiros[df_escuteiros["id"].isin(allowed_escuteiros)]
         if df_escuteiros.empty:
-            st.warning("N„o existem dados para os escuteiros associados a esta conta.")
+            st.warning("N√£o existem dados para os escuteiros associados a esta conta.")
     elif role == "pais":
-        st.warning("A sua conta ainda n„o tem escuteiros associados. Contacte a equipa de administraÁ„o.")
+        st.warning("A sua conta ainda n√£o tem escuteiros associados. Contacte a equipa de administra√ß√£o.")
         df_escuteiros = pd.DataFrame()
 
     if not df_escuteiros.empty:
@@ -251,5 +251,5 @@ else:
 
 st.markdown("---")
 st.info(
-    "Precisa cancelar uma marcaÁ„o? Utilize a opÁ„o **Cancelar Lanche** no dashboard principal."
+    "Precisa cancelar uma marca√ß√£o? Utilize a op√ß√£o **Cancelar Lanche** no dashboard principal."
 )
