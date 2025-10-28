@@ -71,11 +71,16 @@ if recipes_name_col:
 
 
 possible_date_columns = [
-    "Date (from Publica\u00e7\u00e3o Filtro)",
-    "Date (from Marca\u00e7\u00e3o dos Pais na prepara\u00e7\u00e3o do Lanche)",
-    "Date ( calend\u00e1rio )",
-    "Date (calend\u00e1rio)",
+    "Date (from Publicação Filtro)",
+    "Date (from Marcação dos Pais na preparação do Lanche)",
+    "Date ( calendário )",
+    "Date (calendário)",
     "Date",
+    "Data (from Publicação Filtro)",
+    "Data (from Marcação dos Pais na preparação do Lanche)",
+    "Data ( calendário )",
+    "Data (calendário)",
+    "Data",
 ]
 
 normalized_date_columns = [
