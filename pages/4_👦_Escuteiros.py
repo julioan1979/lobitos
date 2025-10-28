@@ -1,10 +1,11 @@
+import unicodedata
 import pandas as pd
 import streamlit as st
 from urllib.parse import urlparse, urlunparse
 from menu import menu_with_redirect
 from airtable_config import context_labels, resolve_form_url
 
-DEFAULT_LANCHE_FORM_URL = resolve_form_url("DEFAULT_LANCHE_FORM_URL", "Formulário de Escolha dos Lanches")
+DEFAULT_LANCHE_FORM_URL = resolve_form_url("DEFAULT_LANCHE_FORM_URL", "FormulÃ¡rio de Escolha dos Lanches")
 
 menu_with_redirect()
 
@@ -76,13 +77,29 @@ possible_date_columns = [
     "Date (calendário)",
     "Date",
 ]
+normalized_date_columns = [
+    unicodedata.normalize("NFKD", coluna)
+    .encode("ASCII", "ignore")
+    .decode("ASCII")
+    .lower()
+    .strip()
+    for coluna in possible_date_columns
+]
+
+def _normalize_key(valor: str) -> str:
+    if valor is None:
+        return ""
+    texto = unicodedata.normalize("NFKD", str(valor))
+    return "".join(car for car in texto if not unicodedata.combining(car)).lower().strip()
 
 def _normalizar_data_menu(frame: pd.DataFrame) -> pd.DataFrame | None:
     if frame is None or frame.empty:
         return None
     frame_local = frame.copy()
-    for coluna in possible_date_columns:
-        if coluna not in frame_local.columns:
+    coluna_map = {_normalize_key(coluna): coluna for coluna in frame_local.columns}
+    for coluna_normalizada in normalized_date_columns:
+        coluna = coluna_map.get(coluna_normalizada)
+        if not coluna:
             continue
         serie = frame_local[coluna].apply(
             lambda valor: valor[0] if isinstance(valor, list) and valor else valor
@@ -103,59 +120,65 @@ item_columns = [
 
 def _render_menu_info(frame: pd.DataFrame) -> None:
     if frame is None or frame.empty:
-        st.info('Sem menu publicado para os pr\u00f3ximos lanches.')
+        st.info('Sem menu publicado para os próximos lanches.')
         return
     frame = frame.copy()
-    col_data = _first_existing(frame, possible_date_columns)
+    coluna_map = {_normalize_key(coluna): coluna for coluna in frame.columns}
+    col_data = None
+    for coluna_normalizada in normalized_date_columns:
+        coluna = coluna_map.get(coluna_normalizada)
+        if coluna:
+            col_data = coluna
+            break
     if col_data is None:
-        st.info('Sem menu publicado para os pr\u00f3ximos lanches.')
+        st.info('Sem menu publicado para os próximos lanches.')
         return
-    frame['__data_menu'] = frame[col_data].apply(
+    frame["__data_menu"] = frame[col_data].apply(
         lambda valor: valor[0] if isinstance(valor, list) and valor else valor
     )
-    frame['__data_menu'] = pd.to_datetime(frame['__data_menu'], errors='coerce')
-    frame = frame[frame['__data_menu'].notna()].sort_values('__data_menu')
+    frame["__data_menu"] = pd.to_datetime(frame["__data_menu"], errors="coerce")
+    frame = frame[frame["__data_menu"].notna()].sort_values("__data_menu")
     if frame.empty:
-        st.info('Sem menu publicado para os pr\u00f3ximos lanches.')
+        st.info('Sem menu publicado para os próximos lanches.')
         return
 
-    iso = frame['__data_menu'].dt.isocalendar()
-    frame['__iso_year'] = iso['year']
-    frame['__iso_week'] = iso['week']
+    iso = frame["__data_menu"].dt.isocalendar()
+    frame["__iso_year"] = iso["year"]
+    frame["__iso_week"] = iso["week"]
 
     hoje = pd.Timestamp.today().normalize()
     hoje_iso = hoje.isocalendar()
 
     desta_semana = frame[
-        (frame['__iso_year'] == hoje_iso.year) & (frame['__iso_week'] == hoje_iso.week)
+        (frame["__iso_year"] == hoje_iso.year) & (frame["__iso_week"] == hoje_iso.week)
     ]
     if not desta_semana.empty:
         destaque = desta_semana.iloc[0]
         titulo = 'Menu desta semana'
     else:
-        proximo = frame[frame['__data_menu'] >= hoje]
+        proximo = frame[frame["__data_menu"] >= hoje]
         if not proximo.empty:
             destaque = proximo.iloc[0]
-            titulo = 'Menu do pr\u00f3ximo lanche'
+            titulo = 'Menu do próximo lanche'
         else:
             destaque = frame.iloc[-1]
-            titulo = '\u00daltimo menu publicado'
+            titulo = 'Último menu publicado'
 
-    data_txt = destaque['__data_menu'].strftime('%d/%m/%Y')
+    data_txt = destaque["__data_menu"].strftime("%d/%m/%Y")
 
     def _format_valor(valor):
         if isinstance(valor, list):
             valores = []
             for item in valor:
-                item_str = str(item).strip() if not isinstance(item, list) else ''
+                item_str = str(item).strip() if not isinstance(item, list) else ""
                 if item_str in recipes_map:
                     valores.append(recipes_map[item_str])
                 elif item_str:
                     valores.append(item_str)
-            return ', '.join(v for v in valores if v)
+            return ", ".join(v for v in valores if v)
         valor_str = str(valor).strip()
         if not valor_str:
-            return ''
+            return ""
         return recipes_map.get(valor_str, valor_str)
 
     itens = []
@@ -169,39 +192,39 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
             continue
         texto = _format_valor(valor_campo)
         if not texto:
-            texto = '-'
-        itens.append(f'- **{rotulo}:** {texto}')
+            texto = "-"
+        itens.append(f"- **{rotulo}:** {texto}")
 
     with st.container(border=True):
-        st.markdown(f'### {titulo} ({data_txt})')
+        st.markdown(f"### {titulo} ({data_txt})")
         if itens:
-            st.markdown('\n'.join(itens))
+            st.markdown("\n".join(itens))
         else:
-            st.markdown('Menu ainda n\u00e3o publicado.')
+            st.markdown("Menu ainda não publicado.")
 
 
 _render_menu_info(_normalizar_data_menu(df_menu))
 
 st.markdown(
     """
-    ### Formulário de Marcação de Lanche
-    Preencha o formulário abaixo para marcar o lanche do seu escuteiro.
+    ### FormulÃ¡rio de MarcaÃ§Ã£o de Lanche
+    Preencha o formulÃ¡rio abaixo para marcar o lanche do seu escuteiro.
     """
 )
 
 df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
 
 if df_escuteiros is None or df_escuteiros.empty or "id" not in df_escuteiros.columns:
-    st.warning("Ainda não existem escuteiros registados ou a tabela está incompleta.")
+    st.warning("Ainda nÃ£o existem escuteiros registados ou a tabela estÃ¡ incompleta.")
 else:
     df_escuteiros = df_escuteiros.copy()
 
     if allowed_escuteiros:
         df_escuteiros = df_escuteiros[df_escuteiros["id"].isin(allowed_escuteiros)]
         if df_escuteiros.empty:
-            st.warning("Não existem dados para os escuteiros associados a esta conta.")
+            st.warning("NÃ£o existem dados para os escuteiros associados a esta conta.")
     elif role == "pais":
-        st.warning("A sua conta ainda não tem escuteiros associados. Contacte a equipa de administração.")
+        st.warning("A sua conta ainda nÃ£o tem escuteiros associados. Contacte a equipa de administraÃ§Ã£o.")
         df_escuteiros = pd.DataFrame()
 
     if not df_escuteiros.empty:
@@ -251,5 +274,5 @@ else:
 
 st.markdown("---")
 st.info(
-    "Precisa cancelar uma marcação? Utilize a opção **Cancelar Lanche** no dashboard principal."
+    "Precisa cancelar uma marcaÃ§Ã£o? Utilize a opÃ§Ã£o **Cancelar Lanche** no dashboard principal."
 )
