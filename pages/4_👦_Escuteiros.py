@@ -5,7 +5,7 @@ from urllib.parse import urlparse, urlunparse
 from menu import menu_with_redirect
 from airtable_config import context_labels, resolve_form_url
 
-DEFAULT_LANCHE_FORM_URL = resolve_form_url("DEFAULT_LANCHE_FORM_URL", "FormulÃ¡rio de Escolha dos Lanches")
+DEFAULT_LANCHE_FORM_URL = resolve_form_url("DEFAULT_LANCHE_FORM_URL", "Formulário de Escolha dos Lanches")
 
 menu_with_redirect()
 
@@ -215,24 +215,24 @@ _render_menu_info(_normalizar_data_menu(df_menu))
 
 st.markdown(
     """
-    ### FormulÃ¡rio de MarcaÃ§Ã£o de Lanche
-    Preencha o formulÃ¡rio abaixo para marcar o lanche do seu escuteiro.
+    ### Formulário de Marcação de Lanche
+    Preencha o formulário abaixo para marcar o lanche do seu escuteiro.
     """
 )
 
 df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
 
 if df_escuteiros is None or df_escuteiros.empty or "id" not in df_escuteiros.columns:
-    st.warning("Ainda nÃ£o existem escuteiros registados ou a tabela estÃ¡ incompleta.")
+    st.warning("Ainda não existem escuteiros registados ou a tabela está incompleta.")
 else:
     df_escuteiros = df_escuteiros.copy()
 
     if allowed_escuteiros:
         df_escuteiros = df_escuteiros[df_escuteiros["id"].isin(allowed_escuteiros)]
         if df_escuteiros.empty:
-            st.warning("NÃ£o existem dados para os escuteiros associados a esta conta.")
+            st.warning("Não existem dados para os escuteiros associados a esta conta.")
     elif role == "pais":
-        st.warning("A sua conta ainda nÃ£o tem escuteiros associados. Contacte a equipa de administraÃ§Ã£o.")
+        st.warning("A sua conta ainda não tem escuteiros associados. Contacte a equipa de administração.")
         df_escuteiros = pd.DataFrame()
 
     if not df_escuteiros.empty:
@@ -282,5 +282,5 @@ else:
 
 st.markdown("---")
 st.info(
-    "Precisa cancelar uma marcaÃ§Ã£o? Utilize a opÃ§Ã£o **Cancelar Lanche** no dashboard principal."
+    "Precisa cancelar uma marcação? Utilize a opção **Cancelar Lanche** no dashboard principal."
 )
