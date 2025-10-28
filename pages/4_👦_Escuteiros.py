@@ -120,7 +120,7 @@ item_columns = [
 
 def _render_menu_info(frame: pd.DataFrame) -> None:
     if frame is None or frame.empty:
-        st.info('Sem menu publicado para os próximos lanches.')
+        st.info('Sem menu publicado para os pr\u00f3ximos lanches.')
         return
     frame = frame.copy()
     coluna_map = {_normalize_key(coluna): coluna for coluna in frame.columns}
@@ -131,7 +131,7 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
             col_data = coluna
             break
     if col_data is None:
-        st.info('Sem menu publicado para os próximos lanches.')
+        st.info('Sem menu publicado para os pr\u00f3ximos lanches.')
         return
     frame["__data_menu"] = frame[col_data].apply(
         lambda valor: valor[0] if isinstance(valor, list) and valor else valor
@@ -139,7 +139,7 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
     frame["__data_menu"] = pd.to_datetime(frame["__data_menu"], errors="coerce")
     frame = frame[frame["__data_menu"].notna()].sort_values("__data_menu")
     if frame.empty:
-        st.info('Sem menu publicado para os próximos lanches.')
+        st.info('Sem menu publicado para os pr\u00f3ximos lanches.')
         return
 
     iso = frame["__data_menu"].dt.isocalendar()
@@ -159,10 +159,10 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
         proximo = frame[frame["__data_menu"] >= hoje]
         if not proximo.empty:
             destaque = proximo.iloc[0]
-            titulo = 'Menu do próximo lanche'
+            titulo = 'Menu do pr\u00f3ximo lanche'
         else:
             destaque = frame.iloc[-1]
-            titulo = 'Último menu publicado'
+            titulo = '\u00daltimo menu publicado'
 
     data_txt = destaque["__data_menu"].strftime("%d/%m/%Y")
 
@@ -200,7 +200,7 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
         if itens:
             st.markdown("\n".join(itens))
         else:
-            st.markdown("Menu ainda não publicado.")
+            st.markdown("Menu ainda n\u00e3o publicado.")
 
 
 _render_menu_info(_normalizar_data_menu(df_menu))
