@@ -832,12 +832,27 @@ def dashboard_admin(dados: dict):
         st.metric("Eventos (próx. 14 dias)", int(eventos_proximos))
 
     voluntariado_em_falta = 0
-    if not df_volunt.empty:
-        df_volunt_check = df_volunt.copy()
-        if "Cancelado" in df_volunt_check.columns:
-            df_volunt_check = df_volunt_check[~df_volunt_check["Cancelado"].astype(str).str.lower().eq("true")]
-        if "Pais" in df_volunt_check.columns:
-            voluntariado_em_falta = df_volunt_check["Pais"].apply(lambda x: not isinstance(x, list) or len(x) == 0).sum()
+    col_preparacao = "Haver\u00e1 prepara\u00e7\u00e3o de Lanches?"
+    col_voluntarios = "Voluntariado Pais"
+    if not df_calendario.empty and col_preparacao in df_calendario.columns:
+        df_cal_check = df_calendario.copy()
+        if "Data" in df_cal_check.columns:
+            df_cal_check["__data"] = pd.to_datetime(df_cal_check["Data"], errors="coerce")
+            df_cal_check = df_cal_check[df_cal_check["__data"].isna() | (df_cal_check["__data"] >= hoje)]
+        df_cal_check = df_cal_check[df_cal_check[col_preparacao].apply(lambda v: isinstance(v, bool) and v)]
+
+        def _tem_voluntarios(valor) -> bool:
+            if isinstance(valor, list):
+                return any(str(item).strip() for item in valor)
+            if pd.isna(valor):
+                return False
+            return bool(str(valor).strip())
+
+        if not df_cal_check.empty:
+            if col_voluntarios in df_cal_check.columns:
+                voluntariado_em_falta = df_cal_check[col_voluntarios].apply(lambda v: not _tem_voluntarios(v)).sum()
+            else:
+                voluntariado_em_falta = len(df_cal_check)
     with col3:
         st.metric("Turnos sem voluntário", int(voluntariado_em_falta))
 
