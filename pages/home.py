@@ -694,7 +694,7 @@ def dashboard_tesoureiro(dados: dict):
             "Estornos",
             "Quota Mensal",
             "Quota Anual",
-            "Saldo Conta Corrente",
+            "Saldo Conta Corrente"
         ]
         for coluna in colunas_numericas:
             if coluna in df_limpo.columns:
