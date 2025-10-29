@@ -827,9 +827,9 @@ def dashboard_admin(dados: dict):
     eventos_proximos = 0
     if not df_calendario.empty and "Data" in df_calendario.columns:
         datas = pd.to_datetime(df_calendario["Data"], errors="coerce")
-        eventos_proximos = ((datas >= hoje) & (datas <= hoje + pd.Timedelta(days=14))).sum()
+        eventos_proximos = ((datas >= hoje) & (datas <= hoje + pd.Timedelta(days=30))).sum()
     with col2:
-        st.metric("Eventos (próx. 14 dias)", int(eventos_proximos))
+        st.metric("Eventos (próx. 30 dias)", int(eventos_proximos))
 
     voluntariado_em_falta = 0
     col_preparacao = "Haver\u00e1 prepara\u00e7\u00e3o de Lanches?"
