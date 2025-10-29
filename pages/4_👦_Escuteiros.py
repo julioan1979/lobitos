@@ -114,6 +114,26 @@ def _ordered_date_columns(frame: pd.DataFrame) -> list[str]:
     return ordered
 
 
+def _has_value(valor) -> bool:
+    """Return True when the field contains data we can display."""
+    if valor is None:
+        return False
+    if isinstance(valor, list):
+        return any(_has_value(item) for item in valor)
+    if isinstance(valor, (pd.Series, pd.Index)):
+        return valor.dropna().notna().any()
+    if isinstance(valor, pd.DataFrame):
+        return not valor.dropna(how="all").empty
+    try:
+        if pd.isna(valor):
+            return False
+    except Exception:
+        pass
+    if isinstance(valor, str):
+        return bool(valor.strip())
+    return True
+
+
 def _normalizar_data_menu(frame: pd.DataFrame) -> pd.DataFrame | None:
     if frame is None or frame.empty:
         return None
@@ -197,10 +217,13 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
     for rotulo, campos in item_columns:
         valor_campo = None
         for campo in campos:
-            if campo in destaque and pd.notna(destaque.get(campo)):
-                valor_campo = destaque.get(campo)
+            if campo not in destaque.index:
+                continue
+            candidato = destaque.get(campo)
+            if _has_value(candidato):
+                valor_campo = candidato
                 break
-        if valor_campo is None:
+        if not _has_value(valor_campo):
             continue
         texto = _format_valor(valor_campo)
         if not texto:
