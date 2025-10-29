@@ -217,7 +217,7 @@ dados = st.session_state["dados_cache"]
 # ======================
 
 def dashboard_pais():
-    st.markdown("## 🏡 Bem-vindos, Famílias Lobitos!")
+    st.markdown("## 🏡 Bem-vindo, Família Escutista!")
     st.info("Aqui podem gerir lanches, voluntariado e acompanhar as atividades.")
 
     df_pedidos = dados.get("Pedidos", pd.DataFrame())
