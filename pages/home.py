@@ -21,7 +21,7 @@ except locale.Error:
 
 
 
-st.set_page_config(page_title="Portal Lobitos", page_icon="🐾", layout="wide")
+st.set_page_config(page_title="Portal Escutista", page_icon="🐾", layout="wide")
 
 # ======================
 # 1) Verificar login
@@ -245,7 +245,7 @@ def dashboard_pais():
         nome = row.get("Nome do Escuteiro")
         codigo = row.get("ID_Escuteiro")
         if pd.isna(nome) or not str(nome).strip():
-            nome = "Lobito sem nome"
+            nome = "Escuteiro sem nome"
         if pd.notna(codigo) and str(codigo).strip():
             return f"{nome} ({codigo})"
         return str(nome)
@@ -261,7 +261,7 @@ def dashboard_pais():
         st.session_state[sess_key] = escuteiros_ids[0]
 
     escuteiro_id = st.selectbox(
-        "Escolha o Lobito",
+        "Escolha o Escuteiro",
         options=escuteiros_ids,
         format_func=lambda value: label_por_id.get(value, value),
         key=sess_key,
@@ -379,7 +379,7 @@ def dashboard_pais():
 
     st.subheader("📖 Últimos pedidos")
     if pedidos_escuteiro.empty:
-        st.info("ℹ️ Ainda não há pedidos registados para este lobito.")
+        st.info("ℹ️ Ainda não há pedidos registados para este Escuteiro.")
     else:
         pedidos_mostrar = pedidos_escuteiro.head(5).copy()
         if "__data" in pedidos_mostrar.columns:
@@ -674,12 +674,14 @@ def dashboard_tesoureiro(dados: dict):
             "Valores recebidos": "Recebimentos",
             "Valor Estornado": "Estornos",
             "Valores doados": "Doações",
+            "Quota Mensal": "Mensalidade",
+            "Quota Anual": "Anualidade"
         })
 
         # Ordenar colunas na ordem correta
         ordem = [
             "Escuteiro", "Nº de Lanches", "Valor dos Lanches",
-            "Recebimentos", "Doações", "Estornos", "Saldo Conta Corrente"
+            "Recebimentos", "Doações", "Estornos", "Quota Mensal", "Quota Anual", "Saldo Conta Corrente"
         ]
         df_limpo = df_limpo[[c for c in ordem if c in df_limpo.columns]]
 
@@ -690,6 +692,8 @@ def dashboard_tesoureiro(dados: dict):
             "Recebimentos",
             "Doações",
             "Estornos",
+            "Quota Mensal",
+            "Quota Anual",
             "Saldo Conta Corrente",
         ]
         for coluna in colunas_numericas:
@@ -705,7 +709,7 @@ def dashboard_tesoureiro(dados: dict):
         if "Nº de Lanches" in df_limpo.columns:
             column_config["Nº de Lanches"] = st.column_config.NumberColumn("Nº de Lanches", format="%d", width="small")
 
-        for coluna in ["Valor dos Lanches", "Recebimentos", "Doações", "Estornos", "Saldo Conta Corrente"]:
+        for coluna in ["Valor dos Lanches", "Recebimentos", "Doações", "Estornos", "Quota Mensal", "Quota Anual", "Saldo Conta Corrente"]:
             if coluna in df_limpo.columns:
                 column_config[coluna] = st.column_config.NumberColumn(coluna, format="%.2f €", width="small")
 
