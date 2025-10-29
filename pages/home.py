@@ -681,6 +681,8 @@ def dashboard_tesoureiro(dados: dict):
             "Valores recebidos": "Recebimentos",
             "Valor Estornado": "Estornos",
             "Valores doados": "Doações",
+            "Quota Mensal": "Mensalidade",
+            "Quota Anual": "Anuidade"
         })
 
         # Ordenar colunas na ordem correta
