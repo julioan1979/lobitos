@@ -939,7 +939,7 @@ def dashboard_admin(dados: dict):
                     sem_vol["Agenda"] = sem_vol["Agenda"].fillna("")
                 if "Haverá preparação de Lanches?" in sem_vol.columns:
                     sem_vol["Haverá preparação de Lanches?"] = sem_vol["Haverá preparação de Lanches?"].map({True: "Sim", False: "Não"}).fillna("–")
-                cols = [c for c in ["Data", "Agenda", "Haverá preparação de Lanches?", "Local"] if c in sem_vol.columns]
+                cols = [c for c in ["Data", "Agenda", "Local"] if c in sem_vol.columns]
                 st.dataframe(sem_vol[cols], use_container_width=True, hide_index=True)
         else:
             st.info("Não foi possível cruzar eventos sem voluntários (sem coluna 'id').")
