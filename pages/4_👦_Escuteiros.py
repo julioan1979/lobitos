@@ -70,27 +70,14 @@ if recipes_name_col:
     recipes_map = df_recipes.set_index('id')[recipes_name_col].dropna().astype(str).to_dict()
 
 
-possible_date_columns = [
-    "Date (from Publicação Filtro)",
-    "Date (from Marcação dos Pais na preparação do Lanche)",
-    "Date ( calendário )",
-    "Date (calendário)",
-    "Date",
-    "Data (from Publicação Filtro)",
-    "Data (from Marcação dos Pais na preparação do Lanche)",
-    "Data ( calendário )",
-    "Data (calendário)",
-    "Data",
-]
-
-normalized_date_columns = [
-    unicodedata.normalize("NFKD", coluna)
-    .encode("ASCII", "ignore")
-    .decode("ASCII")
-    .lower()
-    .strip()
-    for coluna in possible_date_columns
-]
+DATE_KEYWORD_SCORES: dict[str, int] = {
+    "publicacao": 5,
+    "filtro": 4,
+    "marc": 3,
+    "lanche": 2,
+    "calend": 1,
+    "event": 1,
+}
 
 
 def _normalize_key(valor: str) -> str:
@@ -100,15 +87,38 @@ def _normalize_key(valor: str) -> str:
     return "".join(car for car in texto if not unicodedata.combining(car)).lower().strip()
 
 
+def _ordered_date_columns(frame: pd.DataFrame) -> list[str]:
+    if frame is None or frame.empty:
+        return []
+    candidatos: list[tuple[int, int, str]] = []
+    for idx, coluna in enumerate(frame.columns):
+        chave = _normalize_key(coluna)
+        if not chave:
+            continue
+        if "data" not in chave and "date" not in chave:
+            continue
+        score = 1
+        for token, pontos in DATE_KEYWORD_SCORES.items():
+            if token in chave:
+                score += pontos
+        if "specialvalue" in chave or "error" in chave:
+            score -= 2
+        candidatos.append((score, idx, coluna))
+    candidatos.sort(key=lambda item: (-item[0], item[1]))
+    ordered: list[str] = []
+    for score, _, coluna in candidatos:
+        if score <= 0:
+            continue
+        if coluna not in ordered:
+            ordered.append(coluna)
+    return ordered
+
+
 def _normalizar_data_menu(frame: pd.DataFrame) -> pd.DataFrame | None:
     if frame is None or frame.empty:
         return None
     frame_local = frame.copy()
-    coluna_map = {_normalize_key(coluna): coluna for coluna in frame_local.columns}
-    for coluna_normalizada in normalized_date_columns:
-        coluna = coluna_map.get(coluna_normalizada)
-        if not coluna:
-            continue
+    for coluna in _ordered_date_columns(frame_local):
         serie = frame_local[coluna].apply(
             lambda valor: valor[0] if isinstance(valor, list) and valor else valor
         )
@@ -131,13 +141,7 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
         st.info('Sem menu publicado para os próximos lanches.')
         return
     frame = frame.copy()
-    coluna_map = {_normalize_key(coluna): coluna for coluna in frame.columns}
-    col_data = None
-    for coluna_normalizada in normalized_date_columns:
-        coluna = coluna_map.get(coluna_normalizada)
-        if coluna:
-            col_data = coluna
-            break
+    col_data = next((coluna for coluna in _ordered_date_columns(frame)), None)
     if col_data is None:
         st.info('Sem menu publicado para os próximos lanches.')
         return
