@@ -661,8 +661,15 @@ def dashboard_tesoureiro(dados: dict):
     else:
         # Selecionar e renomear colunas
         colunas_uteis = [
-            "Nome do Escuteiro", "Numero de Lanches", "Lanches", "Conta Corrente",
-            "Valores recebidos", "Valor Estornado", "Valores doados"
+            "Nome do Escuteiro",
+            "Numero de Lanches",
+            "Lanches",
+            "Conta Corrente",
+            "Valores recebidos",
+            "Valor Estornado",
+            "Valores doados",
+            "Quota Mensal",
+            "Quota Anual",
         ]
         colunas_existentes = [c for c in colunas_uteis if c in df_cc.columns]
 
@@ -674,8 +681,6 @@ def dashboard_tesoureiro(dados: dict):
             "Valores recebidos": "Recebimentos",
             "Valor Estornado": "Estornos",
             "Valores doados": "Doações",
-            "Quota Mensal": "Mensalidade",
-            "Quota Anual": "Anualidade"
         })
 
         # Ordenar colunas na ordem correta
