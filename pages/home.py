@@ -896,16 +896,34 @@ def dashboard_admin(dados: dict):
         else:
             df_cal["__data"] = pd.NaT
 
+        def _first_existing_col(df_like, candidates):
+            for col_name in candidates:
+                if col_name in df_like.columns:
+                    return col_name
+            return None
+
         eventos_com_vol = set()
-        if not df_volunt.empty and "Date (calendário)" in df_volunt.columns:
+        if not df_volunt.empty:
             df_volunt_valid = df_volunt.copy()
             if "Cancelado" in df_volunt_valid.columns:
                 df_volunt_valid = df_volunt_valid[~df_volunt_valid["Cancelado"].astype(str).str.lower().eq("true")]
-            for val in df_volunt_valid["Date (calendário)"].dropna():
-                if isinstance(val, list):
-                    eventos_com_vol.update(val)
-                else:
-                    eventos_com_vol.add(val)
+            coluna_ligacao = _first_existing_col(
+                df_volunt_valid,
+                [
+                    "Record_ID Calendário (from Date ( calendário ))",
+                    "Record_ID Calendário (from Date (calendário))",
+                    "Record_ID Calendario (from Date ( calendario ))",
+                    "Date ( calendário )",
+                    "Date (calendário)",
+                    "Date ( calendario )",
+                ],
+            )
+            if coluna_ligacao:
+                for val in df_volunt_valid[coluna_ligacao].dropna():
+                    if isinstance(val, list):
+                        eventos_com_vol.update(val)
+                    else:
+                        eventos_com_vol.add(val)
 
         if "id" in df_cal.columns:
             df_cal["__tem_volunt"] = df_cal["id"].apply(lambda x: x in eventos_com_vol)
