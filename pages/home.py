@@ -688,7 +688,7 @@ def dashboard_tesoureiro(dados: dict):
         # Ordenar colunas na ordem correta
         ordem = [
             "Escuteiro", "Nº de Lanches", "Valor dos Lanches",
-            "Recebimentos", "Doações", "Estornos", "Quota Mensal", "Quota Anual", "Saldo Conta Corrente"
+            "Recebimentos", "Doações", "Estornos", "Mensalidade", "Anuidade", "Saldo Conta Corrente"
         ]
         df_limpo = df_limpo[[c for c in ordem if c in df_limpo.columns]]
 
@@ -699,8 +699,8 @@ def dashboard_tesoureiro(dados: dict):
             "Recebimentos",
             "Doações",
             "Estornos",
-            "Quota Mensal",
-            "Quota Anual",
+            "Mensalidade",
+            "Anuidade",
             "Saldo Conta Corrente"
         ]
         for coluna in colunas_numericas:
@@ -716,7 +716,7 @@ def dashboard_tesoureiro(dados: dict):
         if "Nº de Lanches" in df_limpo.columns:
             column_config["Nº de Lanches"] = st.column_config.NumberColumn("Nº de Lanches", format="%d", width="small")
 
-        for coluna in ["Valor dos Lanches", "Recebimentos", "Doações", "Estornos", "Quota Mensal", "Quota Anual", "Saldo Conta Corrente"]:
+        for coluna in ["Valor dos Lanches", "Recebimentos", "Doações", "Estornos", "Mensalidade", "Anuidade", "Saldo Conta Corrente"]:
             if coluna in df_limpo.columns:
                 column_config[coluna] = st.column_config.NumberColumn(coluna, format="%.2f €", width="small")
 
