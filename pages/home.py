@@ -832,6 +832,8 @@ def dashboard_admin(dados: dict):
         st.metric("Eventos (próx. 30 dias)", int(eventos_proximos))
 
     voluntariado_em_falta = 0
+    total_turnos_preparacao = 0
+    turnos_com_voluntario = 0
     col_preparacao = "Haver\u00e1 prepara\u00e7\u00e3o de Lanches?"
     col_voluntarios = "Voluntariado Pais"
     if not df_calendario.empty and col_preparacao in df_calendario.columns:
@@ -840,6 +842,7 @@ def dashboard_admin(dados: dict):
             df_cal_check["__data"] = pd.to_datetime(df_cal_check["Data"], errors="coerce")
             df_cal_check = df_cal_check[df_cal_check["__data"].isna() | (df_cal_check["__data"] >= hoje)]
         df_cal_check = df_cal_check[df_cal_check[col_preparacao].apply(lambda v: isinstance(v, bool) and v)]
+        total_turnos_preparacao = len(df_cal_check)
 
         def _tem_voluntarios(valor) -> bool:
             if isinstance(valor, list):
@@ -848,21 +851,26 @@ def dashboard_admin(dados: dict):
                 return False
             return bool(str(valor).strip())
 
-        if not df_cal_check.empty:
+        if total_turnos_preparacao:
             if col_voluntarios in df_cal_check.columns:
-                voluntariado_em_falta = df_cal_check[col_voluntarios].apply(lambda v: not _tem_voluntarios(v)).sum()
+                faltam_series = df_cal_check[col_voluntarios].apply(lambda v: not _tem_voluntarios(v))
+                voluntariado_em_falta = int(faltam_series.sum())
+                turnos_com_voluntario = int(total_turnos_preparacao - voluntariado_em_falta)
             else:
                 voluntariado_em_falta = len(df_cal_check)
+                turnos_com_voluntario = 0
     with col3:
-        st.metric("Turnos sem voluntário", int(voluntariado_em_falta))
+        st.metric("Turnos sem voluntario", int(voluntariado_em_falta))
 
-    escuteiros_sem_email = 0
-    if not df_esc.empty:
-        cols = [c for c in ["Email", "Email Alternativo"] if c in df_esc.columns]
-        if cols:
-            escuteiros_sem_email = df_esc[cols].fillna("").apply(lambda row: all(not str(v).strip() for v in row), axis=1).sum()
+    if total_turnos_preparacao:
+        cobertura_percent = (turnos_com_voluntario / total_turnos_preparacao) * 100
+        cobertura_texto = f"{cobertura_percent:.0f}%"
+        cobertura_delta = f"{turnos_com_voluntario}/{total_turnos_preparacao} com voluntario"
+    else:
+        cobertura_texto = "N/A"
+        cobertura_delta = None
     with col4:
-        st.metric("Escuteiros sem contacto", int(escuteiros_sem_email))
+        st.metric("Cobertura de voluntariado", cobertura_texto, delta=cobertura_delta, help="Turnos com voluntario / turnos com preparacao agendada nos proximos 30 dias.")
 
     st.divider()
 
@@ -950,7 +958,7 @@ def dashboard_admin(dados: dict):
                         hide_index=True,
                         height=360,
                     )
-                    st.caption(f"{len(sem_vol_display)} turnos sem voluntários.")
+                    st.caption(f"{len(sem_vol_display)} turnos sem voluntarios.")
 
                 with col_grafico:
                     if "__data" in sem_vol.columns:
