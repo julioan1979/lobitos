@@ -2,6 +2,7 @@
 #-*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
+import altair as alt
 from pyairtable import Api
 from menu import menu_with_redirect
 import locale
@@ -961,31 +962,84 @@ def dashboard_admin(dados: dict):
                     st.caption(f"{len(sem_vol_display)} turnos sem voluntarios.")
 
                 with col_grafico:
-                    if "__data" in sem_vol.columns:
-                        agrupamento = (
-                            sem_vol["__data"]
-                            .dt.to_period("M")
-                            .value_counts()
-                            .sort_index()
-                        )
-                        if not agrupamento.empty:
-                            df_barras = (
-                                agrupamento.rename_axis("Período")
-                                .to_frame("Turnos em falta")
-                                .reset_index()
-                            )
-                            df_barras["Período"] = df_barras["Período"].astype(str)
-                            st.bar_chart(
-                                df_barras,
-                                x="Período",
-                                y="Turnos em falta",
-                                use_container_width=True,
-                                height=360,
-                            )
-                        else:
-                            st.info("Sem dados para agrupar por período.")
+                    if "__data" not in df_cal.columns:
+                        st.info("Sem datas disponiveis para os graficos.")
                     else:
-                        st.info("Sem datas disponíveis para o gráfico.")
+                        tab_faltas, tab_cobertura = st.tabs(["Faltas por mes", "Cobertura por mes"])
+
+                        with tab_faltas:
+                            if not sem_vol.empty and "__data" in sem_vol.columns:
+                                agrupamento = (
+                                    sem_vol["__data"]
+                                    .dt.to_period("M")
+                                    .value_counts()
+                                    .sort_index()
+                                )
+                                if not agrupamento.empty:
+                                    df_barras = (
+                                        agrupamento.rename_axis("Periodo")
+                                        .to_frame("Turnos em falta")
+                                        .reset_index()
+                                    )
+                                    df_barras["Periodo"] = df_barras["Periodo"].astype(str)
+                                    st.bar_chart(
+                                        df_barras,
+                                        x="Periodo",
+                                        y="Turnos em falta",
+                                        use_container_width=True,
+                                        height=320,
+                                    )
+                                else:
+                                    st.info("Sem turnos em falta neste periodo.")
+                            else:
+                                st.info("Todos os turnos estao com voluntarios.")
+
+                        with tab_cobertura:
+                            df_cobertura = df_cal.copy()
+                            df_cobertura = df_cobertura[
+                                df_cobertura["__data"].notna()
+                                & (df_cobertura["__data"] >= hoje)
+                            ].copy()
+                            col_pre_evento = "Haverá preparação de Lanches?"
+                            if col_pre_evento in df_cobertura.columns:
+                                df_cobertura = df_cobertura[
+                                    df_cobertura[col_pre_evento].apply(lambda v: isinstance(v, bool) and v)
+                                ]
+
+                            if df_cobertura.empty:
+                                st.info("Sem dados para agrupar por periodo.")
+                            else:
+                                df_cobertura["Periodo"] = df_cobertura["__data"].dt.to_period("M").astype(str)
+                                df_cobertura["status"] = df_cobertura["id"].apply(
+                                    lambda eid: "Com voluntario" if eid in eventos_com_vol else "Sem voluntario"
+                                )
+                                contagem = (
+                                    df_cobertura.groupby(["Periodo", "status"])
+                                    .size()
+                                    .reset_index(name="Turnos")
+                                    .sort_values("Periodo")
+                                )
+                                if contagem.empty:
+                                    st.info("Sem dados para agrupar por periodo.")
+                                else:
+                                    chart = (
+                                        alt.Chart(contagem)
+                                        .mark_bar()
+                                        .encode(
+                                            x=alt.X("Periodo:N", title="Periodo"),
+                                            y=alt.Y("Turnos:Q", title="Turnos"),
+                                            color=alt.Color(
+                                                "status:N",
+                                                title="Situacao",
+                                                scale=alt.Scale(
+                                                    domain=["Com voluntario", "Sem voluntario"],
+                                                    range=["#4CAF50", "#F44336"],
+                                                ),
+                                            ),
+                                        )
+                                        .properties(height=320)
+                                    )
+                                    st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Não foi possível cruzar eventos sem voluntários (sem coluna 'id').")
 
