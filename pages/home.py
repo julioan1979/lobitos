@@ -829,7 +829,7 @@ def dashboard_admin(dados: dict):
         datas = pd.to_datetime(df_calendario["Data"], errors="coerce")
         eventos_proximos = ((datas >= hoje) & (datas <= hoje + pd.Timedelta(days=30))).sum()
     with col2:
-        st.metric("Eventos (próx. 30 dias)", int(eventos_proximos))
+        st.metric("Lanches (próx. 30 dias)", int(eventos_proximos))
 
     voluntariado_em_falta = 0
     total_turnos_preparacao = 0
