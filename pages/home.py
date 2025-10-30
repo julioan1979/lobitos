@@ -860,7 +860,7 @@ def dashboard_admin(dados: dict):
                 voluntariado_em_falta = len(df_cal_check)
                 turnos_com_voluntario = 0
     with col3:
-        st.metric("Turnos sem voluntario", int(voluntariado_em_falta))
+        st.metric("Lanches sem voluntario", int(voluntariado_em_falta))
 
     if total_turnos_preparacao:
         cobertura_percent = (turnos_com_voluntario / total_turnos_preparacao) * 100
@@ -870,7 +870,7 @@ def dashboard_admin(dados: dict):
         cobertura_texto = "N/A"
         cobertura_delta = None
     with col4:
-        st.metric("Cobertura de voluntariado", cobertura_texto, delta=cobertura_delta, help="Turnos com voluntario / turnos com preparacao agendada nos proximos 30 dias.")
+        st.metric("Cobertura de voluntariado", cobertura_texto, delta=cobertura_delta, help="Lanches com voluntario / lanches com preparacao agendada nos próximos 30 dias.")
 
     st.divider()
 
