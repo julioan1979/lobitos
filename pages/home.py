@@ -932,15 +932,52 @@ def dashboard_admin(dados: dict):
             if sem_vol.empty:
                 st.success("Todos os eventos futuros têm voluntários associados.")
             else:
-                sem_vol["Data"] = sem_vol["__data"].dt.strftime("%d/%m/%Y")
-                if "Agenda" not in sem_vol.columns:
-                    sem_vol["Agenda"] = ""
+                sem_vol_display = sem_vol.copy()
+                sem_vol_display["Data"] = sem_vol_display["__data"].dt.strftime("%d/%m/%Y")
+                if "Agenda" not in sem_vol_display.columns:
+                    sem_vol_display["Agenda"] = ""
                 else:
-                    sem_vol["Agenda"] = sem_vol["Agenda"].fillna("")
-                if "Haverá preparação de Lanches?" in sem_vol.columns:
-                    sem_vol["Haverá preparação de Lanches?"] = sem_vol["Haverá preparação de Lanches?"].map({True: "Sim", False: "Não"}).fillna("–")
-                cols = [c for c in ["Data", "Agenda", "Local"] if c in sem_vol.columns]
-                st.dataframe(sem_vol[cols], use_container_width=True, hide_index=True)
+                    sem_vol_display["Agenda"] = sem_vol_display["Agenda"].fillna("")
+                if "Local" in sem_vol_display.columns:
+                    sem_vol_display["Local"] = sem_vol_display["Local"].fillna("")
+
+                cols = [c for c in ["Data", "Agenda", "Local"] if c in sem_vol_display.columns]
+                col_tabela, col_grafico = st.columns([3, 2])
+                with col_tabela:
+                    st.dataframe(
+                        sem_vol_display[cols],
+                        use_container_width=True,
+                        hide_index=True,
+                        height=360,
+                    )
+                    st.caption(f"{len(sem_vol_display)} turnos sem voluntários.")
+
+                with col_grafico:
+                    if "__data" in sem_vol.columns:
+                        agrupamento = (
+                            sem_vol["__data"]
+                            .dt.to_period("M")
+                            .value_counts()
+                            .sort_index()
+                        )
+                        if not agrupamento.empty:
+                            df_barras = (
+                                agrupamento.rename_axis("Período")
+                                .to_frame("Turnos em falta")
+                                .reset_index()
+                            )
+                            df_barras["Período"] = df_barras["Período"].astype(str)
+                            st.bar_chart(
+                                df_barras,
+                                x="Período",
+                                y="Turnos em falta",
+                                use_container_width=True,
+                                height=360,
+                            )
+                        else:
+                            st.info("Sem dados para agrupar por período.")
+                    else:
+                        st.info("Sem datas disponíveis para o gráfico.")
         else:
             st.info("Não foi possível cruzar eventos sem voluntários (sem coluna 'id').")
 
