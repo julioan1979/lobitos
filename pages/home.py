@@ -161,59 +161,47 @@ def formatar_moeda_euro(valor) -> str:
     return f"{texto}€"
 
 
-def construir_mapa_nomes_por_id(dataset: dict) -> dict[str, str]:
-    """Cria um dicionário id -> nome usando quaisquer tabelas já carregadas."""
+def construir_mapa_permissoes(df: pd.DataFrame) -> dict[str, str]:
+    """Cria um mapa id -> nome a partir da tabela de Permissões."""
+    if df is None or df.empty or "id" not in df.columns:
+        return {}
 
-    def _score_coluna(coluna: str) -> tuple[int, str]:
+    colunas_candidatas = [c for c in df.columns if c != "id"]
+    if not colunas_candidatas:
+        return {}
+
+    def _prioridade(coluna: str) -> tuple[int, str]:
         nome_lower = coluna.lower()
-        if nome_lower in {"nome", "name"}:
-            return (0, nome_lower)
         if "nome" in nome_lower:
+            return (0, nome_lower)
+        if "utilizador" in nome_lower or "user" in nome_lower:
             return (1, nome_lower)
-        if "name" in nome_lower:
-            return (2, nome_lower)
         if "email" in nome_lower:
-            return (3, nome_lower)
-        return (4, nome_lower)
+            return (2, nome_lower)
+        return (3, nome_lower)
 
-    mapa: dict[str, str] = {}
-    for df in dataset.values():
-        if df is None or df.empty or "id" not in df.columns:
+    colunas_candidatas.sort(key=_prioridade)
+
+    df_indexado = df.set_index("id")
+    for coluna in colunas_candidatas:
+        serie = df_indexado[coluna].dropna()
+        if serie.empty:
             continue
 
-        colunas_texto: list[str] = []
-        for coluna in df.columns:
-            if coluna == "id":
+        mapa: dict[str, str] = {}
+        for idx, valor in serie.items():
+            if isinstance(valor, list):
+                valor = ", ".join(str(v).strip() for v in valor if str(v).strip())
+            valor_str = str(valor).strip()
+            if not valor_str:
                 continue
-            serie = df[coluna]
-            if serie.dtype == object or serie.apply(lambda v: isinstance(v, list)).any():
-                colunas_texto.append(coluna)
+            if idx not in mapa:
+                mapa[idx] = valor_str
 
-        if not colunas_texto:
-            continue
+        if mapa:
+            return mapa
 
-        colunas_texto.sort(key=_score_coluna)
-
-        for coluna in colunas_texto:
-            serie = df.set_index("id")[coluna].dropna()
-            if serie.empty:
-                continue
-
-            serie = serie.apply(lambda v: ", ".join(v) if isinstance(v, list) else v)
-            algum_mapeado = False
-            for idx, valor in serie.items():
-                if not isinstance(valor, str):
-                    valor = str(valor)
-                valor_limpo = valor.strip()
-                if not valor_limpo:
-                    continue
-                if idx not in mapa:
-                    mapa[idx] = valor_limpo
-                    algum_mapeado = True
-            if algum_mapeado:
-                break
-
-    return mapa
+    return {}
 
 def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
     if not st.session_state.get(session_key, False):
@@ -845,18 +833,13 @@ def dashboard_tesoureiro(dados: dict):
             )
 
         df_permissoes = dados.get("Permissoes", pd.DataFrame())
-        permissoes_map = {}
-        if df_permissoes is not None and not df_permissoes.empty:
-            permissoes_map = construir_mapa_nomes_por_id({"Permissoes": df_permissoes})
-
-        mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
+        permissoes_map = construir_mapa_permissoes(df_permissoes)
 
         if "Quem Recebeu" in df_rec_limpo.columns:
             candidatos_quem_recebeu = [
                 col
                 for col in df_rec.columns
-                if col not in {"Quem Recebeu?", "Quem recebeu?_OLD"}
-                and col.lower().startswith("quem recebeu")
+                if col != "Quem Recebeu?" and col.lower().startswith("quem recebeu")
             ]
 
             def _score_coluna(coluna: str) -> tuple[int, str]:
@@ -879,10 +862,6 @@ def dashboard_tesoureiro(dados: dict):
             elif permissoes_map:
                 df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
                     lambda valor: mapear_lista(valor, permissoes_map)
-                )
-            elif mapa_nomes_ids:
-                df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, mapa_nomes_ids)
                 )
             elif escuteiros_map:
                 df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
