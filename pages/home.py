@@ -1057,11 +1057,21 @@ def dashboard_tesoureiro(dados: dict):
                 format="DD/MM/YYYY",
             )
 
-        if isinstance(periodo_selecionado, tuple):
-            data_inicio, data_fim = periodo_selecionado
+        data_inicio = data_fim = None
+        if isinstance(periodo_selecionado, (tuple, list)):
+            valores = [item for item in periodo_selecionado if item]
+            if len(valores) >= 2:
+                data_inicio, data_fim = valores[0], valores[1]
+            elif len(valores) == 1:
+                data_inicio = data_fim = valores[0]
+        elif periodo_selecionado:
+            data_inicio = data_fim = periodo_selecionado
+
+        if data_inicio is None or data_fim is None:
+            data_inicio = data_fim = hoje
+            st.session_state[periodo_key] = (hoje, hoje)
         else:
-            data_inicio = periodo_selecionado
-            data_fim = periodo_selecionado
+            st.session_state[periodo_key] = (data_inicio, data_fim)
 
         data_inicio_ts = pd.Timestamp(data_inicio)
         data_fim_ts = pd.Timestamp(data_fim)
