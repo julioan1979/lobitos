@@ -889,21 +889,31 @@ def dashboard_tesoureiro(dados: dict):
                     lambda valor: mapear_lista(valor, escuteiros_map)
                 )
 
+        # Tratar tipos das colunas para permitir alinhar/formatar via column_config
         if "Valor (€)" in df_rec_limpo.columns:
-            df_rec_limpo["Valor (€)"] = df_rec_limpo["Valor (€)"].apply(formatar_moeda_euro)
+            # manter valor como numérico para permitir ordenação e alinhamento correto
+            df_rec_limpo["Valor (€)"] = pd.to_numeric(df_rec_limpo["Valor (€)"], errors="coerce")
 
         if "Data" in df_rec_limpo.columns:
-            df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
+            # manter como datetime para usar DateColumn
+            df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce")
 
-        # Configurar alinhamento das colunas: Valor, Meio de Pagamento, Data e Quem Recebeu à direita
+        # Configurar column_config: usar NumberColumn para valores (alinhado à direita por padrão)
         column_config = {}
         if "Escuteiro" in df_rec_limpo.columns:
             column_config["Escuteiro"] = st.column_config.TextColumn("Escuteiro")
 
-        # As colunas abaixo são texto formatado (ex: "1,50€") — usar TextColumn com alinhamento à direita
-        for col in ["Valor (€)", "Meio de Pagamento", "Data", "Quem Recebeu"]:
-            if col in df_rec_limpo.columns:
-                column_config[col] = st.column_config.TextColumn(col, horizontal_alignment="right")
+        if "Valor (€)" in df_rec_limpo.columns:
+            column_config["Valor (€)"] = st.column_config.NumberColumn("Valor (€)", format="%.2f €", width="small")
+
+        if "Meio de Pagamento" in df_rec_limpo.columns:
+            column_config["Meio de Pagamento"] = st.column_config.TextColumn("Meio de Pagamento")
+
+        if "Data" in df_rec_limpo.columns:
+            column_config["Data"] = st.column_config.DateColumn("Data", format="%d/%m/%Y")
+
+        if "Quem Recebeu" in df_rec_limpo.columns:
+            column_config["Quem Recebeu"] = st.column_config.TextColumn("Quem Recebeu")
 
         st.dataframe(df_rec_limpo, use_container_width=True, column_config=column_config)
 
