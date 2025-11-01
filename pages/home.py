@@ -733,16 +733,16 @@ def dashboard_tesoureiro(dados: dict):
     if df_rec.empty:
         st.info("ℹ️ Não há recebimentos registados.")
     else:
-        colunas_uteis = ["Nome do Escuteiro", "Valor Recebido", "Meio de Pagamento", "Date", "Quem recebeu?_OLD"]
+        colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
         colunas_existentes = [c for c in colunas_uteis if c in df_rec.columns]
         df_rec_limpo = df_rec[colunas_existentes].copy()
 
         df_rec_limpo = df_rec_limpo.rename(columns={
-            "Nome do Escuteiro": "Escuteiro",
+            "Escuteiros": "Escuteiro",
             "Valor Recebido": "Valor (€)",
             "Meio de Pagamento": "Meio de Pagamento",
             "Date": "Data",
-            "Quem recebeu?_OLD": "Quem Recebeu"
+            "Quem Recebeu?": "Quem Recebeu"
         })
 
         if "Data" in df_rec_limpo.columns:
