@@ -1101,7 +1101,7 @@ def dashboard_tesoureiro(dados: dict):
         if st.session_state.get(periodo_widget_key) != widget_val:
             st.session_state[periodo_widget_key] = widget_val
 
-        widget_atual = _normalizar_periodo(st.session_state.get(periodo_widget_key, periodo_atual))
+        widget_atual = _normalizar_periodo(st.session_state.get(periodo_widget_key, widget_val))
         if widget_atual != periodo_atual:
             st.session_state[periodo_key] = widget_atual
             periodo_atual = widget_atual
@@ -1196,11 +1196,6 @@ def dashboard_tesoureiro(dados: dict):
 
         st.markdown("### 📊 Posição de Caixa")
 
-        def _definir_periodo(inicio: date, fim: date) -> None:
-            periodo = (inicio, fim)
-            st.session_state[periodo_key] = periodo
-            st.experimental_rerun()
-
         filtro_cols = st.columns([2, 3])
         with filtro_cols[0]:
             periodo_escolhido = st.date_input(
@@ -1217,16 +1212,19 @@ def dashboard_tesoureiro(dados: dict):
         with filtro_cols[1]:
             botoes = st.columns(4)
             if botoes[0].button("Hoje", use_container_width=True):
-                _definir_periodo(hoje, hoje)
+                st.session_state[periodo_key] = (hoje, hoje)
+                st.experimental_rerun()
 
             if botoes[1].button("Últimos 3 dias", use_container_width=True):
                 inicio = hoje - timedelta(days=2)
-                _definir_periodo(inicio, hoje)
+                st.session_state[periodo_key] = (inicio, hoje)
+                st.experimental_rerun()
 
             if botoes[2].button("Esta semana", use_container_width=True):
                 inicio_semana = hoje - timedelta(days=hoje.weekday())
                 fim_semana = inicio_semana + timedelta(days=6)
-                _definir_periodo(inicio_semana, min(fim_semana, hoje))
+                st.session_state[periodo_key] = (inicio_semana, min(fim_semana, hoje))
+                st.experimental_rerun()
 
             if botoes[3].button("Este mês", use_container_width=True):
                 inicio_mes = date(hoje.year, hoje.month, 1)
@@ -1235,7 +1233,8 @@ def dashboard_tesoureiro(dados: dict):
                 else:
                     proximo_mes = date(hoje.year, hoje.month + 1, 1)
                 fim_mes = proximo_mes - timedelta(days=1)
-                _definir_periodo(inicio_mes, fim_mes)
+                st.session_state[periodo_key] = (inicio_mes, fim_mes)
+                st.experimental_rerun()
 
         st.caption(
             f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
