@@ -7,7 +7,7 @@ from pyairtable import Api
 from menu import menu_with_redirect
 import locale
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
 from airtable_config import context_labels, current_context, get_airtable_credentials, resolve_form_url
@@ -1044,36 +1044,46 @@ def dashboard_tesoureiro(dados: dict):
 
         periodo_key = "tesouraria_periodo_movimentos"
         hoje = pd.Timestamp.today().date()
-        st.session_state.setdefault(periodo_key, (hoje, hoje))
+        periodo_padrao = (hoje, hoje)
 
-        filtro_colunas = st.columns([3, 1])
-        with filtro_colunas[1]:
-            if st.button("Hoje", key="tesouraria_btn_periodo_hoje", use_container_width=True):
-                st.session_state[periodo_key] = (hoje, hoje)
-        with filtro_colunas[0]:
-            periodo_selecionado = st.date_input(
-                "Período",
-                value=st.session_state[periodo_key],
-                key=periodo_key,
-                format="DD/MM/YYYY",
-            )
+        def _converter_para_date(valor):
+            if isinstance(valor, date):
+                return valor
+            if isinstance(valor, datetime):
+                return valor.date()
+            if isinstance(valor, pd.Timestamp):
+                return valor.date()
+            return None
 
-        data_inicio = data_fim = None
-        if isinstance(periodo_selecionado, (tuple, list)):
-            valores = [item for item in periodo_selecionado if item]
+        def _normalizar_periodo(valor):
+            if isinstance(valor, (tuple, list)):
+                valores = []
+                for item in valor:
+                    convertido = _converter_para_date(item)
+                    if convertido is not None:
+                        valores.append(convertido)
+            else:
+                convertido = _converter_para_date(valor)
+                valores = [convertido] if convertido is not None else []
+
             if len(valores) >= 2:
-                data_inicio, data_fim = valores[0], valores[1]
+                inicio, fim = valores[0], valores[1]
             elif len(valores) == 1:
-                data_inicio = data_fim = valores[0]
-        elif periodo_selecionado:
-            data_inicio = data_fim = periodo_selecionado
+                inicio = fim = valores[0]
+            else:
+                inicio, fim = periodo_padrao
 
-        if data_inicio is None or data_fim is None:
-            data_inicio = data_fim = hoje
-            st.session_state[periodo_key] = (hoje, hoje)
-        else:
-            st.session_state[periodo_key] = (data_inicio, data_fim)
+            if inicio > fim:
+                inicio, fim = fim, inicio
 
+            return (inicio, fim)
+
+        st.session_state.setdefault(periodo_key, periodo_padrao)
+        periodo_atual = _normalizar_periodo(st.session_state.get(periodo_key, periodo_padrao))
+        if periodo_atual != st.session_state.get(periodo_key):
+            st.session_state[periodo_key] = periodo_atual
+
+        data_inicio, data_fim = periodo_atual
         data_inicio_ts = pd.Timestamp(data_inicio)
         data_fim_ts = pd.Timestamp(data_fim)
 
@@ -1101,18 +1111,9 @@ def dashboard_tesoureiro(dados: dict):
         )
         saldo_periodo = total_recebimentos_periodo - total_estornos_periodo
 
-        st.markdown("#### Resumo do período")
-        st.caption(
-            f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} — {data_fim_ts.strftime('%d/%m/%Y')}"
-        )
-        col_metricas = st.columns(3)
-        col_metricas[0].metric("Recebido no período", formatar_moeda_euro(total_recebimentos_periodo))
-        col_metricas[1].metric("Estornado no período", formatar_moeda_euro(total_estornos_periodo))
-        col_metricas[2].metric("Saldo do período", formatar_moeda_euro(saldo_periodo))
-
-        st.markdown("#### Movimentos de Recebimento")
+        st.markdown("### 🧾 Recebimentos")
         if df_rec_periodo.empty:
-            st.info("🛈 Nenhum recebimento no período selecionado.")
+            st.info("ℹ️ Nenhum recebimento no período selecionado.")
         else:
             display_recebimentos = df_rec_periodo.copy()
             if "Valor (€)" in display_recebimentos.columns:
@@ -1122,7 +1123,7 @@ def dashboard_tesoureiro(dados: dict):
             if "Data" in display_recebimentos.columns:
                 display_recebimentos["Data"] = pd.to_datetime(
                     display_recebimentos["Data"], errors="coerce"
-                ).dt.strftime('%d/%m/%Y')
+                ).dt.strftime("%d/%m/%Y")
 
             cols = list(display_recebimentos.columns)
             right_align_cols = cols[1:] if len(cols) > 1 else []
@@ -1139,11 +1140,11 @@ def dashboard_tesoureiro(dados: dict):
                 except Exception:
                     st.dataframe(display_recebimentos, use_container_width=True)
 
-        st.markdown("#### ♻️ Estornos de Recebimento")
+        st.markdown("### ↩️ Estornos de Recebimento")
         if df_estornos.empty:
-            st.info("🛈 Nenhum estorno registado.")
+            st.info("ℹ️ Nenhum estorno registado.")
         elif df_estornos_periodo.empty:
-            st.info("🛈 Nenhum estorno no período selecionado.")
+            st.info("ℹ️ Nenhum estorno no período selecionado.")
         else:
             display_estornos = df_estornos_periodo.copy()
             if "Valor (€)" in display_estornos.columns:
@@ -1153,7 +1154,7 @@ def dashboard_tesoureiro(dados: dict):
             if "Data" in display_estornos.columns:
                 display_estornos["Data"] = pd.to_datetime(
                     display_estornos["Data"], errors="coerce"
-                ).dt.strftime('%d/%m/%Y')
+                ).dt.strftime("%d/%m/%Y")
 
             cols_est = list(display_estornos.columns)
             right_align_est = cols_est[1:] if len(cols_est) > 1 else []
@@ -1169,6 +1170,56 @@ def dashboard_tesoureiro(dados: dict):
                     st.dataframe(display_estornos, use_container_width=True, column_config=fallback_config_est)
                 except Exception:
                     st.dataframe(display_estornos, use_container_width=True)
+
+        st.markdown("### 📊 Resumo do Período")
+
+        def _definir_periodo(inicio: date, fim: date) -> None:
+            st.session_state[periodo_key] = (inicio, fim)
+            st.experimental_rerun()
+
+        filtro_cols = st.columns([2, 3])
+        with filtro_cols[0]:
+            periodo_escolhido = st.date_input(
+                "Intervalo personalizado",
+                value=(data_inicio, data_fim),
+                key=periodo_key,
+                format="DD/MM/YYYY",
+            )
+            periodo_normalizado = _normalizar_periodo(periodo_escolhido)
+            if periodo_normalizado != st.session_state.get(periodo_key):
+                st.session_state[periodo_key] = periodo_normalizado
+                st.experimental_rerun()
+
+        with filtro_cols[1]:
+            botoes = st.columns(4)
+            if botoes[0].button("Hoje", use_container_width=True):
+                _definir_periodo(hoje, hoje)
+
+            if botoes[1].button("Últimos 3 dias", use_container_width=True):
+                inicio = hoje - timedelta(days=2)
+                _definir_periodo(inicio, hoje)
+
+            if botoes[2].button("Esta semana", use_container_width=True):
+                inicio_semana = hoje - timedelta(days=hoje.weekday())
+                fim_semana = inicio_semana + timedelta(days=6)
+                _definir_periodo(inicio_semana, min(fim_semana, hoje))
+
+            if botoes[3].button("Este mês", use_container_width=True):
+                inicio_mes = date(hoje.year, hoje.month, 1)
+                if hoje.month == 12:
+                    proximo_mes = date(hoje.year + 1, 1, 1)
+                else:
+                    proximo_mes = date(hoje.year, hoje.month + 1, 1)
+                fim_mes = proximo_mes - timedelta(days=1)
+                _definir_periodo(inicio_mes, fim_mes)
+
+        st.caption(
+            f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
+        )
+        col_metricas = st.columns(3)
+        col_metricas[0].metric("Recebido no período", formatar_moeda_euro(total_recebimentos_periodo))
+        col_metricas[1].metric("Estornado no período", formatar_moeda_euro(total_estornos_periodo))
+        col_metricas[2].metric("Saldo do período", formatar_moeda_euro(saldo_periodo))
 
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
