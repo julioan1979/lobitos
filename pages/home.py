@@ -895,7 +895,17 @@ def dashboard_tesoureiro(dados: dict):
         if "Data" in df_rec_limpo.columns:
             df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
 
-        st.dataframe(df_rec_limpo, use_container_width=True)
+        # Configurar alinhamento das colunas: Valor, Meio de Pagamento, Data e Quem Recebeu à direita
+        column_config = {}
+        if "Escuteiro" in df_rec_limpo.columns:
+            column_config["Escuteiro"] = st.column_config.TextColumn("Escuteiro")
+
+        # As colunas abaixo são texto formatado (ex: "1,50€") — usar TextColumn com alinhamento à direita
+        for col in ["Valor (€)", "Meio de Pagamento", "Data", "Quem Recebeu"]:
+            if col in df_rec_limpo.columns:
+                column_config[col] = st.column_config.TextColumn(col, horizontal_alignment="right")
+
+        st.dataframe(df_rec_limpo, use_container_width=True, column_config=column_config)
 
 
 
