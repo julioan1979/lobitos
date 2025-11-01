@@ -924,17 +924,31 @@ def dashboard_tesoureiro(dados: dict):
         if "Data" in display_df.columns:
             display_df["Data"] = pd.to_datetime(display_df["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
 
-        # Columns to right-align (valor already formatted as string)
-        right_align_cols = [c for c in ["Valor (€)", "Meio de Pagamento", "Data", "Quem Recebeu"] if c in display_df.columns]
+        # Right-align all columns except the first one for better numeric/date alignment
+        cols = list(display_df.columns)
+        right_align_cols = cols[1:] if len(cols) > 1 else []
 
         try:
+            # start with left alignment for everything, then right-align the selected columns
             styler = display_df.style.set_properties(**{"text-align": "left"})
             if right_align_cols:
                 styler = styler.set_properties(subset=right_align_cols, **{"text-align": "right"})
             st.dataframe(styler, use_container_width=True)
         except Exception:
-            # Fallback: if Styler isn't supported in this environment, render plain dataframe
-            st.dataframe(display_df, use_container_width=True)
+            # Fallback: if Styler isn't supported, try to rely on column_config to get numbers/dates right
+            try:
+                # create a column_config that right-aligns all except first by using NumberColumn/DateColumn when possible
+                fallback_config = {}
+                for c in cols[1:]:
+                    if c == "Valor (€)":
+                        fallback_config[c] = st.column_config.TextColumn(c)
+                    elif c == "Data":
+                        fallback_config[c] = st.column_config.TextColumn(c)
+                    else:
+                        fallback_config[c] = st.column_config.TextColumn(c)
+                st.dataframe(display_df, use_container_width=True, column_config=fallback_config)
+            except Exception:
+                st.dataframe(display_df, use_container_width=True)
 
 
 
