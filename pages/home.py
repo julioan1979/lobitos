@@ -788,24 +788,33 @@ def dashboard_tesoureiro(dados: dict):
             )
 
         if "Quem Recebeu" in df_rec_limpo.columns:
-            quem_recebeu_map = {}
-            if "Quem recebeu?_OLD" in df_rec.columns:
-                for _, row in df_rec.iterrows():
-                    bruto = row.get("Quem Recebeu?")
-                    nome = row.get("Quem recebeu?_OLD")
-                    if pd.isna(nome):
-                        continue
-                    if isinstance(bruto, list):
-                        for rec_id in bruto:
-                            if isinstance(rec_id, str):
-                                quem_recebeu_map.setdefault(rec_id, nome)
-                    elif isinstance(bruto, str):
-                        quem_recebeu_map.setdefault(bruto, nome)
-            if not quem_recebeu_map and escuteiros_map:
-                quem_recebeu_map = escuteiros_map
-            if quem_recebeu_map:
+            candidatos_quem_recebeu = [
+                col
+                for col in df_rec.columns
+                if col not in {"Quem Recebeu?", "Quem recebeu?_OLD"}
+                and col.lower().startswith("quem recebeu")
+            ]
+
+            def _score_coluna(coluna: str) -> tuple[int, str]:
+                nome_lower = coluna.lower()
+                if "nome" in nome_lower or "name" in nome_lower:
+                    return (0, nome_lower)
+                if "lookup" in nome_lower:
+                    return (1, nome_lower)
+                return (2, nome_lower)
+
+            coluna_nome_quem_recebeu = None
+            if candidatos_quem_recebeu:
+                candidatos_quem_recebeu.sort(key=_score_coluna)
+                coluna_nome_quem_recebeu = candidatos_quem_recebeu[0]
+
+            if coluna_nome_quem_recebeu:
+                df_rec_limpo["Quem Recebeu"] = df_rec[coluna_nome_quem_recebeu].apply(
+                    lambda valor: mapear_lista(valor, {})
+                )
+            elif escuteiros_map:
                 df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, quem_recebeu_map)
+                    lambda valor: mapear_lista(valor, escuteiros_map)
                 )
 
         if "Valor (€)" in df_rec_limpo.columns:
