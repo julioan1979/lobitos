@@ -1086,25 +1086,14 @@ def dashboard_tesoureiro(dados: dict):
 
             return (inicio, fim)
 
-        st.session_state.setdefault(periodo_key, periodo_padrao)
         periodo_atual = _normalizar_periodo(st.session_state.get(periodo_key, periodo_padrao))
-        if periodo_atual != st.session_state.get(periodo_key):
-            st.session_state[periodo_key] = periodo_atual
-
-        def _periodo_para_widget(periodo: tuple[date, date]) -> tuple[date, date]:
-            return (
-                pd.Timestamp(periodo[0]).date(),
-                pd.Timestamp(periodo[1]).date(),
-            )
-
-        widget_val = _periodo_para_widget(periodo_atual)
+        st.session_state[periodo_key] = periodo_atual
+        widget_val = (
+            pd.Timestamp(periodo_atual[0]).date(),
+            pd.Timestamp(periodo_atual[1]).date(),
+        )
         if st.session_state.get(periodo_widget_key) != widget_val:
             st.session_state[periodo_widget_key] = widget_val
-
-        widget_atual = _normalizar_periodo(st.session_state.get(periodo_widget_key, widget_val))
-        if widget_atual != periodo_atual:
-            st.session_state[periodo_key] = widget_atual
-            periodo_atual = widget_atual
 
         data_inicio, data_fim = periodo_atual
         data_inicio_ts = pd.Timestamp(data_inicio)
