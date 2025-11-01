@@ -1044,8 +1044,7 @@ def dashboard_tesoureiro(dados: dict):
 
         periodo_key = "tesouraria_periodo_movimentos"
         hoje = pd.Timestamp.today().date()
-        if periodo_key not in st.session_state:
-            st.session_state[periodo_key] = (hoje, hoje)
+        st.session_state.setdefault(periodo_key, (hoje, hoje))
 
         filtro_colunas = st.columns([3, 1])
         with filtro_colunas[1]:
@@ -1054,7 +1053,6 @@ def dashboard_tesoureiro(dados: dict):
         with filtro_colunas[0]:
             periodo_selecionado = st.date_input(
                 "Período",
-                value=st.session_state.get(periodo_key, (hoje, hoje)),
                 key=periodo_key,
                 format="DD/MM/YYYY",
             )
