@@ -215,6 +215,153 @@ def construir_mapa_nomes_por_id(dataset: dict) -> dict[str, str]:
 
     return mapa
 
+
+def escolher_coluna(df: pd.DataFrame, candidatos: list[str]) -> str | None:
+    if df is None or df.empty:
+        return None
+
+    colunas = list(df.columns)
+    normalizados = {col.lower().strip(): col for col in colunas}
+    for candidato in candidatos:
+        chave = candidato.lower().strip()
+        if chave in normalizados:
+            return normalizados[chave]
+
+    for candidato in candidatos:
+        chave = candidato.lower().strip()
+        for coluna in colunas:
+            if chave in coluna.lower().strip():
+                return coluna
+    return None
+
+
+def preparar_dataframe_estornos(
+    dados: dict,
+    escuteiros_map: dict[str, str],
+    permissoes_map: dict[str, str],
+    mapa_nomes_ids: dict[str, str],
+) -> pd.DataFrame:
+    possiveis_tabelas = [
+        "Estorno de Recebimento",
+        "Estornos de Recebimento",
+        "Estorno Recebimento",
+        "Estorno",
+        "Estornos",
+    ]
+    df_origem = pd.DataFrame()
+    origem_utilizada = None
+    for nome in possiveis_tabelas:
+        df_candidato = dados.get(nome)
+        if isinstance(df_candidato, pd.DataFrame) and not df_candidato.empty:
+            df_origem = df_candidato.copy()
+            origem_utilizada = nome
+            break
+
+    if df_origem.empty:
+        df_receb = dados.get("Recebimento", pd.DataFrame())
+        if isinstance(df_receb, pd.DataFrame) and not df_receb.empty:
+            df_origem = df_receb.copy()
+            origem_utilizada = "Recebimento"
+        else:
+            return pd.DataFrame()
+
+    df_trabalho = df_origem.copy()
+    if origem_utilizada == "Recebimento":
+        mask_estorno = pd.Series(False, index=df_trabalho.index)
+
+        for coluna in ["Tipo de Movimento", "Tipo", "Categoria", "Movimento", "Motivo"]:
+            if coluna in df_trabalho.columns:
+                serie = df_trabalho[coluna].astype(str).str.lower()
+                mask_estorno = mask_estorno | serie.str.contains("estorno", na=False)
+
+        for coluna in ["É Estorno", "E Estorno", "Estorno?", "Estorno", "é Estorno", "é_estorno"]:
+            if coluna in df_trabalho.columns:
+                serie = df_trabalho[coluna]
+                if serie.dtype == bool:
+                    mask_estorno = mask_estorno | serie
+                else:
+                    serie_str = serie.astype(str).str.strip().str.lower()
+                    mask_estorno = mask_estorno | serie_str.isin({"1", "true", "verdadeiro", "sim", "yes"})
+
+        if "Valor Estornado" in df_trabalho.columns:
+            valores = pd.to_numeric(df_trabalho["Valor Estornado"], errors="coerce").fillna(0).abs()
+            mask_estorno = mask_estorno | (valores > 0)
+
+        if "Valor Recebido" in df_trabalho.columns:
+            valores = pd.to_numeric(df_trabalho["Valor Recebido"], errors="coerce")
+            mask_estorno = mask_estorno | (valores < 0)
+
+        df_trabalho = df_trabalho.loc[mask_estorno].copy()
+        if df_trabalho.empty:
+            return pd.DataFrame()
+
+    coluna_escuteiro = escolher_coluna(df_trabalho, ["Escuteiros", "Escuteiro", "Escuteiro(s)", "Escuteiros Relacionados"])
+    coluna_valor = escolher_coluna(
+        df_trabalho,
+        [
+            "Valor Estornado",
+            "Valor Estorno",
+            "Valor do Estorno",
+            "Valor",
+            "Valor (€)",
+            "Valor Recebido",
+        ],
+    )
+    coluna_data = escolher_coluna(df_trabalho, ["Data do Estorno", "Date", "Data"])
+    coluna_meio = escolher_coluna(
+        df_trabalho,
+        ["Meio de Pagamento", "Método de Pagamento", "Metodo de Pagamento", "Método", "Metodo"],
+    )
+    coluna_responsavel = escolher_coluna(
+        df_trabalho,
+        [
+            "Quem Estornou?",
+            "Quem Estornou",
+            "Quem Recebeu?",
+            "Registado Por",
+            "Responsável",
+            "Criado Por",
+        ],
+    )
+
+    resultado = pd.DataFrame(index=df_trabalho.index)
+
+    if coluna_escuteiro:
+        resultado["Escuteiro"] = df_trabalho[coluna_escuteiro].apply(lambda valor: mapear_lista(valor, escuteiros_map))
+
+    if coluna_valor:
+        resultado["Valor (€)"] = pd.to_numeric(df_trabalho[coluna_valor], errors="coerce").abs()
+
+    if coluna_meio:
+        resultado["Meio de Pagamento"] = df_trabalho[coluna_meio]
+
+    if coluna_data:
+        resultado["Data"] = pd.to_datetime(df_trabalho[coluna_data], errors="coerce").dt.normalize()
+
+    if coluna_responsavel:
+        def _mapear_responsavel(valor):
+            if permissoes_map:
+                texto = mapear_lista(valor, permissoes_map)
+                if texto:
+                    return texto
+            if mapa_nomes_ids:
+                texto = mapear_lista(valor, mapa_nomes_ids)
+                if texto:
+                    return texto
+            if escuteiros_map:
+                texto = mapear_lista(valor, escuteiros_map)
+                if texto:
+                    return texto
+            return mapear_lista(valor, {})
+
+        resultado["Quem Estornou"] = df_trabalho[coluna_responsavel].apply(_mapear_responsavel)
+
+    resultado = resultado.dropna(how="all")
+    if "Valor (€)" in resultado.columns:
+        resultado = resultado[resultado["Valor (€)"].notna()]
+
+    return resultado
+
 def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
     if not st.session_state.get(session_key, False):
         return
@@ -466,7 +613,7 @@ def dashboard_pais():
     else:
         pedidos_mostrar = pedidos_escuteiro.head(5).copy()
         if "__data" in pedidos_mostrar.columns:
-            pedidos_mostrar["Data"] = pedidos_mostrar["__data"].dt.strftime("%d/%m/%Y")
+            pedidos_mostrar["Data"] = pedidos_mostrar["__data"].dt.strftime('%d/%m/%Y')
         if "Created" in pedidos_mostrar.columns:
             horarios = pd.to_datetime(pedidos_mostrar["Created"], errors="coerce")
             pedidos_mostrar["Hora"] = horarios.dt.strftime("%H:%M").fillna("")
@@ -524,7 +671,7 @@ def dashboard_pais():
         st.metric("Senhas (última marcação)", senha_mais_recente or "—")
 
     with col9:
-        st.metric("Último pedido", ultimo_registo.strftime("%d/%m/%Y") if isinstance(ultimo_registo, pd.Timestamp) and not pd.isna(ultimo_registo) else "—")
+        st.metric("Último pedido", ultimo_registo.strftime('%d/%m/%Y') if isinstance(ultimo_registo, pd.Timestamp) and not pd.isna(ultimo_registo) else "—")
 
     if bebidas_freq:
         st.caption(f"🍹 Bebida favorita recente: {bebidas_freq}")
@@ -576,7 +723,7 @@ def dashboard_pais():
 
     st.subheader("📅 Próximos compromissos")
     if proximo_volunt is not None:
-        data_vol = proximo_volunt["__data"].strftime("%d/%m/%Y") if not pd.isna(proximo_volunt["__data"]) else "Data a confirmar"
+        data_vol = proximo_volunt["__data"].strftime('%d/%m/%Y') if not pd.isna(proximo_volunt["__data"]) else "Data a confirmar"
         agenda_vol = proximo_volunt["__agenda"] or "Voluntariado"
         st.success(f"✅ {escuteiro_nome} está inscrito no voluntariado de {data_vol}: {agenda_vol}")
     else:
@@ -586,7 +733,7 @@ def dashboard_pais():
             if not df_cal_future.empty:
                 proximo_evento = df_cal_future.iloc[0]
         if proximo_evento is not None:
-            data_evt = proximo_evento["__data"].strftime("%d/%m/%Y") if not pd.isna(proximo_evento["__data"]) else "Data a definir"
+            data_evt = proximo_evento["__data"].strftime('%d/%m/%Y') if not pd.isna(proximo_evento["__data"]) else "Data a definir"
             agenda_evt = proximo_evento.get("Agenda", "Atividade da Alcateia")
             st.info(f"📅 Próximo evento da Alcateia: {data_evt} – {agenda_evt}")
         else:
@@ -813,7 +960,7 @@ def dashboard_tesoureiro(dados: dict):
 
     df_rec = dados.get("Recebimento", pd.DataFrame())
     if df_rec.empty:
-        st.info("ℹ️ Não há recebimentos registados.")
+        st.info("🛈 Não há recebimentos registados.")
     else:
         colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
         colunas_existentes = [c for c in colunas_uteis if c in df_rec.columns]
@@ -824,7 +971,7 @@ def dashboard_tesoureiro(dados: dict):
             "Valor Recebido": "Valor (€)",
             "Meio de Pagamento": "Meio de Pagamento",
             "Date": "Data",
-            "Quem Recebeu?": "Quem Recebeu"
+            "Quem Recebeu?": "Quem Recebeu",
         })
 
         df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
@@ -833,9 +980,7 @@ def dashboard_tesoureiro(dados: dict):
             for coluna_nome in ("Nome do Escuteiro", "Escuteiro", "Nome"):
                 if coluna_nome in df_escuteiros.columns:
                     escuteiros_map = (
-                        df_escuteiros.set_index("id")[coluna_nome]
-                        .dropna()
-                        .to_dict()
+                        df_escuteiros.set_index("id")[coluna_nome].dropna().to_dict()
                     )
                     break
 
@@ -889,68 +1034,132 @@ def dashboard_tesoureiro(dados: dict):
                     lambda valor: mapear_lista(valor, escuteiros_map)
                 )
 
-        # Tratar tipos das colunas para permitir alinhar/formatar via column_config
         if "Valor (€)" in df_rec_limpo.columns:
-            # manter valor como numérico para permitir ordenação e alinhamento correto
             df_rec_limpo["Valor (€)"] = pd.to_numeric(df_rec_limpo["Valor (€)"], errors="coerce")
 
         if "Data" in df_rec_limpo.columns:
-            # manter como datetime para usar DateColumn
-            df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce")
+            df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.normalize()
 
-        # Configurar column_config: usar NumberColumn para valores (alinhado à direita por padrão)
-        column_config = {}
-        if "Escuteiro" in df_rec_limpo.columns:
-            column_config["Escuteiro"] = st.column_config.TextColumn("Escuteiro")
+        df_estornos = preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
 
-        if "Valor (€)" in df_rec_limpo.columns:
-            column_config["Valor (€)"] = st.column_config.NumberColumn("Valor (€)", format="%.2f €", width="small")
+        periodo_key = "tesouraria_periodo_movimentos"
+        hoje = pd.Timestamp.today().date()
+        if periodo_key not in st.session_state:
+            st.session_state[periodo_key] = (hoje, hoje)
 
-        if "Meio de Pagamento" in df_rec_limpo.columns:
-            column_config["Meio de Pagamento"] = st.column_config.TextColumn("Meio de Pagamento")
+        filtro_colunas = st.columns([3, 1])
+        with filtro_colunas[1]:
+            if st.button("Hoje", key="tesouraria_btn_periodo_hoje", use_container_width=True):
+                st.session_state[periodo_key] = (hoje, hoje)
+        with filtro_colunas[0]:
+            periodo_selecionado = st.date_input(
+                "Período",
+                value=st.session_state.get(periodo_key, (hoje, hoje)),
+                key=periodo_key,
+                format="DD/MM/YYYY",
+            )
 
-        # DateColumn expects a moment-style format (no %): use DD/MM/YYYY
-        # However, some Streamlit versions don't support horizontal alignment for TextColumn.
-        # To ensure stable right-alignment across versions, format display values and use a pandas
-        # Styler to set text-align for the desired columns, then render with st.dataframe(styler).
+        if isinstance(periodo_selecionado, tuple):
+            data_inicio, data_fim = periodo_selecionado
+        else:
+            data_inicio = periodo_selecionado
+            data_fim = periodo_selecionado
 
-        display_df = df_rec_limpo.copy()
+        data_inicio_ts = pd.Timestamp(data_inicio)
+        data_fim_ts = pd.Timestamp(data_fim)
 
-        # Format Valor as localized euro string for display
-        if "Valor (€)" in display_df.columns:
-            display_df["Valor (€)"] = display_df["Valor (€)"].apply(lambda v: formatar_moeda_euro(v) if pd.notna(v) else "")
+        if "Data" in df_rec_limpo.columns:
+            mask_receb = df_rec_limpo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")
+            df_rec_periodo = df_rec_limpo.loc[mask_receb].copy()
+        else:
+            df_rec_periodo = df_rec_limpo.copy()
 
-        # Format Data as dd/mm/YYYY string for display
-        if "Data" in display_df.columns:
-            display_df["Data"] = pd.to_datetime(display_df["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
+        if not df_rec_periodo.empty and "Data" in df_rec_periodo.columns:
+            df_rec_periodo = df_rec_periodo.sort_values("Data", ascending=False)
 
-        # Right-align all columns except the first one for better numeric/date alignment
-        cols = list(display_df.columns)
-        right_align_cols = cols[1:] if len(cols) > 1 else []
+        df_estornos_periodo = df_estornos.copy()
+        if not df_estornos_periodo.empty and "Data" in df_estornos_periodo.columns:
+            df_estornos_periodo = df_estornos_periodo[
+                df_estornos_periodo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")
+            ].copy()
+            df_estornos_periodo = df_estornos_periodo.sort_values("Data", ascending=False)
 
-        try:
-            # start with left alignment for everything, then right-align the selected columns
-            styler = display_df.style.set_properties(**{"text-align": "left"})
-            if right_align_cols:
-                styler = styler.set_properties(subset=right_align_cols, **{"text-align": "right"})
-            st.dataframe(styler, use_container_width=True)
-        except Exception:
-            # Fallback: if Styler isn't supported, try to rely on column_config to get numbers/dates right
+        total_recebimentos_periodo = (
+            df_rec_periodo["Valor (€)"].sum() if "Valor (€)" in df_rec_periodo.columns else 0.0
+        )
+        total_estornos_periodo = (
+            df_estornos_periodo["Valor (€)"].sum() if "Valor (€)" in df_estornos_periodo.columns else 0.0
+        )
+        saldo_periodo = total_recebimentos_periodo - total_estornos_periodo
+
+        st.markdown("#### Resumo do período")
+        st.caption(
+            f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} — {data_fim_ts.strftime('%d/%m/%Y')}"
+        )
+        col_metricas = st.columns(3)
+        col_metricas[0].metric("Recebido no período", formatar_moeda_euro(total_recebimentos_periodo))
+        col_metricas[1].metric("Estornado no período", formatar_moeda_euro(total_estornos_periodo))
+        col_metricas[2].metric("Saldo do período", formatar_moeda_euro(saldo_periodo))
+
+        st.markdown("#### Movimentos de Recebimento")
+        if df_rec_periodo.empty:
+            st.info("🛈 Nenhum recebimento no período selecionado.")
+        else:
+            display_recebimentos = df_rec_periodo.copy()
+            if "Valor (€)" in display_recebimentos.columns:
+                display_recebimentos["Valor (€)"] = display_recebimentos["Valor (€)"].apply(
+                    lambda v: formatar_moeda_euro(v) if pd.notna(v) else ""
+                )
+            if "Data" in display_recebimentos.columns:
+                display_recebimentos["Data"] = pd.to_datetime(
+                    display_recebimentos["Data"], errors="coerce"
+                ).dt.strftime('%d/%m/%Y')
+
+            cols = list(display_recebimentos.columns)
+            right_align_cols = cols[1:] if len(cols) > 1 else []
+
             try:
-                # create a column_config that right-aligns all except first by using NumberColumn/DateColumn when possible
-                fallback_config = {}
-                for c in cols[1:]:
-                    if c == "Valor (€)":
-                        fallback_config[c] = st.column_config.TextColumn(c)
-                    elif c == "Data":
-                        fallback_config[c] = st.column_config.TextColumn(c)
-                    else:
-                        fallback_config[c] = st.column_config.TextColumn(c)
-                st.dataframe(display_df, use_container_width=True, column_config=fallback_config)
+                styler = display_recebimentos.style.set_properties(**{"text-align": "left"})
+                if right_align_cols:
+                    styler = styler.set_properties(subset=right_align_cols, **{"text-align": "right"})
+                st.dataframe(styler, use_container_width=True)
             except Exception:
-                st.dataframe(display_df, use_container_width=True)
+                try:
+                    fallback_config = {c: st.column_config.TextColumn(c) for c in right_align_cols}
+                    st.dataframe(display_recebimentos, use_container_width=True, column_config=fallback_config)
+                except Exception:
+                    st.dataframe(display_recebimentos, use_container_width=True)
 
+        st.markdown("#### ♻️ Estornos de Recebimento")
+        if df_estornos.empty:
+            st.info("🛈 Nenhum estorno registado.")
+        elif df_estornos_periodo.empty:
+            st.info("🛈 Nenhum estorno no período selecionado.")
+        else:
+            display_estornos = df_estornos_periodo.copy()
+            if "Valor (€)" in display_estornos.columns:
+                display_estornos["Valor (€)"] = display_estornos["Valor (€)"].apply(
+                    lambda v: formatar_moeda_euro(v) if pd.notna(v) else ""
+                )
+            if "Data" in display_estornos.columns:
+                display_estornos["Data"] = pd.to_datetime(
+                    display_estornos["Data"], errors="coerce"
+                ).dt.strftime('%d/%m/%Y')
 
+            cols_est = list(display_estornos.columns)
+            right_align_est = cols_est[1:] if len(cols_est) > 1 else []
+
+            try:
+                styler_est = display_estornos.style.set_properties(**{"text-align": "left"})
+                if right_align_est:
+                    styler_est = styler_est.set_properties(subset=right_align_est, **{"text-align": "right"})
+                st.dataframe(styler_est, use_container_width=True)
+            except Exception:
+                try:
+                    fallback_config_est = {c: st.column_config.TextColumn(c) for c in right_align_est}
+                    st.dataframe(display_estornos, use_container_width=True, column_config=fallback_config_est)
+                except Exception:
+                    st.dataframe(display_estornos, use_container_width=True)
 
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
@@ -1084,7 +1293,7 @@ def dashboard_admin(dados: dict):
             st.info("Nenhum pedido pendente.")
         else:
             if "Date" in df_pend.columns:
-                df_pend["Date"] = pd.to_datetime(df_pend["Date"], errors="coerce").dt.strftime("%d/%m/%Y")
+                df_pend["Date"] = pd.to_datetime(df_pend["Date"], errors="coerce").dt.strftime('%d/%m/%Y')
             if "Escuteiros" in df_pend.columns:
                 df_pend["Escuteiros"] = df_pend["Escuteiros"].apply(lambda v: mapear_lista(v, escuteiros_map))
             for coluna in ["Lanche", "Bebida", "Fruta"]:
@@ -1142,7 +1351,7 @@ def dashboard_admin(dados: dict):
                 st.success("Todos os eventos futuros têm voluntários associados.")
             else:
                 sem_vol_display = sem_vol.copy()
-                sem_vol_display["Data"] = sem_vol_display["__data"].dt.strftime("%d/%m/%Y")
+                sem_vol_display["Data"] = sem_vol_display["__data"].dt.strftime('%d/%m/%Y')
                 if "Agenda" not in sem_vol_display.columns:
                     sem_vol_display["Agenda"] = ""
                 else:
@@ -1255,7 +1464,7 @@ def dashboard_admin(dados: dict):
             row = futuros.loc[idx]
             data = row.get("__data")
             if pd.notna(data):
-                data_str = data.strftime("%d/%m/%Y")
+                data_str = data.strftime('%d/%m/%Y')
             else:
                 data_raw = row.get("Data")
                 data_str = data_raw if isinstance(data_raw, str) and data_raw else "Sem data"
