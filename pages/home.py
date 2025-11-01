@@ -133,6 +133,31 @@ def mapear_lista(valor, mapping):
         return ""
     return mapping.get(valor, valor)
 
+
+def formatar_moeda_euro(valor) -> str:
+    if pd.isna(valor):
+        return ""
+
+    numero = valor
+    if isinstance(valor, str):
+        limpo = valor.replace("€", "").replace(" ", "")
+        if "," in limpo and "." in limpo:
+            limpo = limpo.replace(".", "").replace(",", ".")
+        elif "," in limpo:
+            limpo = limpo.replace(",", ".")
+        try:
+            numero = float(limpo)
+        except ValueError:
+            return valor
+    try:
+        numero = float(numero)
+    except (TypeError, ValueError):
+        return str(valor)
+
+    texto = f"{numero:,.2f}"
+    texto = texto.replace(",", "x").replace(".", ",").replace("x", ".")
+    return f"{texto}€"
+
 def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
     if not st.session_state.get(session_key, False):
         return
@@ -744,6 +769,47 @@ def dashboard_tesoureiro(dados: dict):
             "Date": "Data",
             "Quem Recebeu?": "Quem Recebeu"
         })
+
+        df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
+        escuteiros_map = {}
+        if not df_escuteiros.empty and "id" in df_escuteiros.columns:
+            for coluna_nome in ("Nome do Escuteiro", "Escuteiro", "Nome"):
+                if coluna_nome in df_escuteiros.columns:
+                    escuteiros_map = (
+                        df_escuteiros.set_index("id")[coluna_nome]
+                        .dropna()
+                        .to_dict()
+                    )
+                    break
+
+        if escuteiros_map and "Escuteiro" in df_rec_limpo.columns:
+            df_rec_limpo["Escuteiro"] = df_rec_limpo["Escuteiro"].apply(
+                lambda valor: mapear_lista(valor, escuteiros_map)
+            )
+
+        if "Quem Recebeu" in df_rec_limpo.columns:
+            quem_recebeu_map = {}
+            if "Quem recebeu?_OLD" in df_rec.columns:
+                for _, row in df_rec.iterrows():
+                    bruto = row.get("Quem Recebeu?")
+                    nome = row.get("Quem recebeu?_OLD")
+                    if pd.isna(nome):
+                        continue
+                    if isinstance(bruto, list):
+                        for rec_id in bruto:
+                            if isinstance(rec_id, str):
+                                quem_recebeu_map.setdefault(rec_id, nome)
+                    elif isinstance(bruto, str):
+                        quem_recebeu_map.setdefault(bruto, nome)
+            if not quem_recebeu_map and escuteiros_map:
+                quem_recebeu_map = escuteiros_map
+            if quem_recebeu_map:
+                df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
+                    lambda valor: mapear_lista(valor, quem_recebeu_map)
+                )
+
+        if "Valor (€)" in df_rec_limpo.columns:
+            df_rec_limpo["Valor (€)"] = df_rec_limpo["Valor (€)"].apply(formatar_moeda_euro)
 
         if "Data" in df_rec_limpo.columns:
             df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
