@@ -78,7 +78,6 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
         "tesoureiro": [
             "Escuteiros",
             "Recebimento",
-            "Recebimento Chefes Tesoureiros",
             "Publicar Menu do Scouts",
         ],
         "admin": [
@@ -88,7 +87,6 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Escuteiros",
             "Recipes",
             "Recebimento",
-            "Recebimento Chefes Tesoureiros",
             "Publicar Menu do Scouts",
         ],
     }
@@ -159,61 +157,6 @@ def formatar_moeda_euro(valor) -> str:
     texto = f"{numero:,.2f}"
     texto = texto.replace(",", "x").replace(".", ",").replace("x", ".")
     return f"{texto}€"
-
-
-def construir_mapa_nomes_por_id(dataset: dict) -> dict[str, str]:
-    """Cria um dicionário id -> nome usando quaisquer tabelas carregadas."""
-
-    def _score_coluna(coluna: str) -> tuple[int, str]:
-        nome_lower = coluna.lower()
-        if nome_lower in {"nome", "name"}:
-            return (0, nome_lower)
-        if "nome" in nome_lower:
-            return (1, nome_lower)
-        if "name" in nome_lower:
-            return (2, nome_lower)
-        if "email" in nome_lower:
-            return (3, nome_lower)
-        return (4, nome_lower)
-
-    mapa: dict[str, str] = {}
-    for df in dataset.values():
-        if df is None or df.empty or "id" not in df.columns:
-            continue
-
-        colunas_texto = []
-        for coluna in df.columns:
-            if coluna == "id":
-                continue
-            serie = df[coluna]
-            if serie.dtype == object or serie.apply(lambda v: isinstance(v, list)).any():
-                colunas_texto.append(coluna)
-
-        if not colunas_texto:
-            continue
-
-        colunas_texto.sort(key=_score_coluna)
-
-        for coluna in colunas_texto:
-            serie = df.set_index("id")[coluna].dropna()
-            if serie.empty:
-                continue
-
-            serie = serie.apply(lambda v: ", ".join(v) if isinstance(v, list) else v)
-            algum_mapeado = False
-            for idx, valor in serie.items():
-                if not isinstance(valor, str):
-                    valor = str(valor)
-                valor_limpo = valor.strip()
-                if not valor_limpo:
-                    continue
-                if idx not in mapa:
-                    mapa[idx] = valor_limpo
-                    algum_mapeado = True
-            if algum_mapeado:
-                break
-
-    return mapa
 
 def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
     if not st.session_state.get(session_key, False):
@@ -844,8 +787,6 @@ def dashboard_tesoureiro(dados: dict):
                 lambda valor: mapear_lista(valor, escuteiros_map)
             )
 
-        mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
-
         if "Quem Recebeu" in df_rec_limpo.columns:
             candidatos_quem_recebeu = [
                 col
@@ -867,20 +808,11 @@ def dashboard_tesoureiro(dados: dict):
                 candidatos_quem_recebeu.sort(key=_score_coluna)
                 coluna_nome_quem_recebeu = candidatos_quem_recebeu[0]
 
-            aplicou_quem_recebeu = False
             if coluna_nome_quem_recebeu:
                 df_rec_limpo["Quem Recebeu"] = df_rec[coluna_nome_quem_recebeu].apply(
                     lambda valor: mapear_lista(valor, {})
                 )
-                aplicou_quem_recebeu = True
-
-            if not aplicou_quem_recebeu and mapa_nomes_ids:
-                df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, mapa_nomes_ids)
-                )
-                aplicou_quem_recebeu = True
-
-            if not aplicou_quem_recebeu and escuteiros_map:
+            elif escuteiros_map:
                 df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
                     lambda valor: mapear_lista(valor, escuteiros_map)
                 )
