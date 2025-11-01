@@ -1091,10 +1091,16 @@ def dashboard_tesoureiro(dados: dict):
         if periodo_atual != st.session_state.get(periodo_key):
             st.session_state[periodo_key] = periodo_atual
 
-        st.session_state.setdefault(periodo_widget_key, periodo_atual)
+        def _periodo_para_widget(periodo: tuple[date, date]) -> tuple[datetime, datetime]:
+            return (
+                pd.Timestamp(periodo[0]).to_pydatetime(),
+                pd.Timestamp(periodo[1]).to_pydatetime(),
+            )
+
+        st.session_state.setdefault(periodo_widget_key, _periodo_para_widget(periodo_atual))
         widget_atual = _normalizar_periodo(st.session_state.get(periodo_widget_key, periodo_atual))
         if widget_atual != periodo_atual:
-            st.session_state[periodo_widget_key] = periodo_atual
+            st.session_state[periodo_widget_key] = _periodo_para_widget(periodo_atual)
 
         data_inicio, data_fim = periodo_atual
         data_inicio_ts = pd.Timestamp(data_inicio)
@@ -1189,21 +1195,21 @@ def dashboard_tesoureiro(dados: dict):
         def _definir_periodo(inicio: date, fim: date) -> None:
             periodo = (inicio, fim)
             st.session_state[periodo_key] = periodo
-            st.session_state[periodo_widget_key] = periodo
+            st.session_state[periodo_widget_key] = _periodo_para_widget(periodo)
             st.experimental_rerun()
 
         filtro_cols = st.columns([2, 3])
         with filtro_cols[0]:
             periodo_escolhido = st.date_input(
                 "Intervalo personalizado",
-                value=periodo_atual,
+                value=st.session_state[periodo_widget_key],
                 key=periodo_widget_key,
                 format="DD/MM/YYYY",
             )
             periodo_normalizado = _normalizar_periodo(periodo_escolhido)
             if periodo_normalizado != st.session_state.get(periodo_key):
                 st.session_state[periodo_key] = periodo_normalizado
-                st.session_state[periodo_widget_key] = periodo_normalizado
+                st.session_state[periodo_widget_key] = _periodo_para_widget(periodo_normalizado)
                 st.experimental_rerun()
 
         with filtro_cols[1]:
