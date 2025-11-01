@@ -1050,7 +1050,6 @@ def dashboard_tesoureiro(dados: dict):
         df_estornos = preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
 
         periodo_key = "tesouraria_periodo_movimentos"
-        periodo_widget_key = f"{periodo_key}_input"
         hoje = pd.Timestamp.today().date()
         periodo_padrao = (hoje, hoje)
 
@@ -1087,13 +1086,44 @@ def dashboard_tesoureiro(dados: dict):
             return (inicio, fim)
 
         periodo_atual = _normalizar_periodo(st.session_state.get(periodo_key, periodo_padrao))
+
+        st.markdown("### 📊 Posição de Caixa")
+
+        filtro_cols = st.columns([2, 3])
+        novo_periodo: tuple[date, date] | None = None
+        with filtro_cols[1]:
+            botoes = st.columns(4)
+            if botoes[0].button("Hoje", use_container_width=True):
+                novo_periodo = (hoje, hoje)
+            if botoes[1].button("Últimos 3 dias", use_container_width=True):
+                novo_periodo = (hoje - timedelta(days=2), hoje)
+            if botoes[2].button("Esta semana", use_container_width=True):
+                inicio_semana = hoje - timedelta(days=hoje.weekday())
+                fim_semana = inicio_semana + timedelta(days=6)
+                novo_periodo = (inicio_semana, min(fim_semana, hoje))
+            if botoes[3].button("Este mês", use_container_width=True):
+                inicio_mes = date(hoje.year, hoje.month, 1)
+                if hoje.month == 12:
+                    proximo_mes = date(hoje.year + 1, 1, 1)
+                else:
+                    proximo_mes = date(hoje.year, hoje.month + 1, 1)
+                fim_mes = proximo_mes - timedelta(days=1)
+                novo_periodo = (inicio_mes, fim_mes)
+
+        valor_inicial = novo_periodo or periodo_atual
+        with filtro_cols[0]:
+            periodo_escolhido = st.date_input(
+                "Intervalo personalizado",
+                value=tuple(pd.Timestamp(v).date() for v in valor_inicial),
+                format="DD/MM/YYYY",
+            )
+
+        if novo_periodo is not None:
+            periodo_atual = novo_periodo
+        else:
+            periodo_atual = _normalizar_periodo(periodo_escolhido)
+
         st.session_state[periodo_key] = periodo_atual
-        widget_val = (
-            pd.Timestamp(periodo_atual[0]).date(),
-            pd.Timestamp(periodo_atual[1]).date(),
-        )
-        if st.session_state.get(periodo_widget_key) != widget_val:
-            st.session_state[periodo_widget_key] = widget_val
 
         data_inicio, data_fim = periodo_atual
         data_inicio_ts = pd.Timestamp(data_inicio)
@@ -1182,49 +1212,6 @@ def dashboard_tesoureiro(dados: dict):
                     st.dataframe(display_estornos, use_container_width=True, column_config=fallback_config_est)
                 except Exception:
                     st.dataframe(display_estornos, use_container_width=True)
-
-        st.markdown("### 📊 Posição de Caixa")
-
-        filtro_cols = st.columns([2, 3])
-        with filtro_cols[0]:
-            periodo_escolhido = st.date_input(
-                "Intervalo personalizado",
-                value=st.session_state[periodo_widget_key],
-                key=periodo_widget_key,
-                format="DD/MM/YYYY",
-            )
-            periodo_normalizado = _normalizar_periodo(periodo_escolhido)
-            if periodo_normalizado != st.session_state.get(periodo_key):
-                st.session_state[periodo_key] = periodo_normalizado
-                st.experimental_rerun()
-
-        with filtro_cols[1]:
-            botoes = st.columns(4)
-            if botoes[0].button("Hoje", use_container_width=True):
-                st.session_state[periodo_key] = (hoje, hoje)
-                st.experimental_rerun()
-
-            if botoes[1].button("Últimos 3 dias", use_container_width=True):
-                inicio = hoje - timedelta(days=2)
-                st.session_state[periodo_key] = (inicio, hoje)
-                st.experimental_rerun()
-
-            if botoes[2].button("Esta semana", use_container_width=True):
-                inicio_semana = hoje - timedelta(days=hoje.weekday())
-                fim_semana = inicio_semana + timedelta(days=6)
-                st.session_state[periodo_key] = (inicio_semana, min(fim_semana, hoje))
-                st.experimental_rerun()
-
-            if botoes[3].button("Este mês", use_container_width=True):
-                inicio_mes = date(hoje.year, hoje.month, 1)
-                if hoje.month == 12:
-                    proximo_mes = date(hoje.year + 1, 1, 1)
-                else:
-                    proximo_mes = date(hoje.year, hoje.month + 1, 1)
-                fim_mes = proximo_mes - timedelta(days=1)
-                st.session_state[periodo_key] = (inicio_mes, fim_mes)
-                st.experimental_rerun()
-
         st.caption(
             f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
         )
