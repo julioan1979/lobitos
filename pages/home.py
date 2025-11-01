@@ -78,6 +78,8 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
         "tesoureiro": [
             "Escuteiros",
             "Recebimento",
+            "Estorno de Recebimento",
+            "Estornos de Recebimento",
             "Permissoes",
             "Publicar Menu do Scouts",
         ],
@@ -88,6 +90,8 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Escuteiros",
             "Recipes",
             "Recebimento",
+            "Estorno de Recebimento",
+            "Estornos de Recebimento",
             "Permissoes",
             "Publicar Menu do Scouts",
         ],
@@ -1111,7 +1115,7 @@ def dashboard_tesoureiro(dados: dict):
         )
         saldo_periodo = total_recebimentos_periodo - total_estornos_periodo
 
-        st.markdown("### 🧾 Recebimentos")
+        st.markdown("#### 🧾 Registos no período")
         if df_rec_periodo.empty:
             st.info("ℹ️ Nenhum recebimento no período selecionado.")
         else:
@@ -1171,7 +1175,7 @@ def dashboard_tesoureiro(dados: dict):
                 except Exception:
                     st.dataframe(display_estornos, use_container_width=True)
 
-        st.markdown("### 📊 Resumo do Período")
+        st.markdown("### 📊 Posição de Caixa")
 
         def _definir_periodo(inicio: date, fim: date) -> None:
             st.session_state[periodo_key] = (inicio, fim)
