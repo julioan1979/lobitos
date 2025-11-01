@@ -1053,6 +1053,7 @@ def dashboard_tesoureiro(dados: dict):
         with filtro_colunas[0]:
             periodo_selecionado = st.date_input(
                 "Período",
+                value=st.session_state[periodo_key],
                 key=periodo_key,
                 format="DD/MM/YYYY",
             )
