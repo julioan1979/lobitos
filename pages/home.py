@@ -78,6 +78,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
         "tesoureiro": [
             "Escuteiros",
             "Recebimento",
+            "Permissoes",
             "Publicar Menu do Scouts",
         ],
         "admin": [
@@ -87,6 +88,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Escuteiros",
             "Recipes",
             "Recebimento",
+            "Permissoes",
             "Publicar Menu do Scouts",
         ],
     }
@@ -842,6 +844,11 @@ def dashboard_tesoureiro(dados: dict):
                 lambda valor: mapear_lista(valor, escuteiros_map)
             )
 
+        df_permissoes = dados.get("Permissoes", pd.DataFrame())
+        permissoes_map = {}
+        if df_permissoes is not None and not df_permissoes.empty:
+            permissoes_map = construir_mapa_nomes_por_id({"Permissoes": df_permissoes})
+
         mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
 
         if "Quem Recebeu" in df_rec_limpo.columns:
@@ -868,6 +875,10 @@ def dashboard_tesoureiro(dados: dict):
             if coluna_nome_quem_recebeu:
                 df_rec_limpo["Quem Recebeu"] = df_rec[coluna_nome_quem_recebeu].apply(
                     lambda valor: mapear_lista(valor, {})
+                )
+            elif permissoes_map:
+                df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
+                    lambda valor: mapear_lista(valor, permissoes_map)
                 )
             elif mapa_nomes_ids:
                 df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
