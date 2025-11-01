@@ -79,7 +79,6 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Escuteiros",
             "Recebimento",
             "Estorno de Recebimento",
-            "Estornos de Recebimento",
             "Permissoes",
             "Publicar Menu do Scouts",
         ],
@@ -91,13 +90,13 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Recipes",
             "Recebimento",
             "Estorno de Recebimento",
-            "Estornos de Recebimento",
             "Permissoes",
             "Publicar Menu do Scouts",
         ],
     }
 
     lista_tabelas = tabelas_por_role.get(role, [])
+    tabelas_opcionais = set()
 
     for nome in lista_tabelas:
         try:
@@ -107,6 +106,10 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             dados[nome] = pd.DataFrame(rows)
             time.sleep(0.25)  # evitar limite 5 requests/s
         except Exception as e:
+            mensagem = str(e)
+            if nome in tabelas_opcionais and "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND" in mensagem:
+                dados[nome] = pd.DataFrame()
+                continue
             st.warning(f"⚠️ Não consegui carregar a tabela {nome}: {e}")
             dados[nome] = pd.DataFrame()
     return dados
