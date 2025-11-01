@@ -909,13 +909,32 @@ def dashboard_tesoureiro(dados: dict):
         if "Meio de Pagamento" in df_rec_limpo.columns:
             column_config["Meio de Pagamento"] = st.column_config.TextColumn("Meio de Pagamento")
 
-        if "Data" in df_rec_limpo.columns:
-            column_config["Data"] = st.column_config.DateColumn("Data", format="%d/%m/%Y")
+        # DateColumn expects a moment-style format (no %): use DD/MM/YYYY
+        # However, some Streamlit versions don't support horizontal alignment for TextColumn.
+        # To ensure stable right-alignment across versions, format display values and use a pandas
+        # Styler to set text-align for the desired columns, then render with st.dataframe(styler).
 
-        if "Quem Recebeu" in df_rec_limpo.columns:
-            column_config["Quem Recebeu"] = st.column_config.TextColumn("Quem Recebeu")
+        display_df = df_rec_limpo.copy()
 
-        st.dataframe(df_rec_limpo, use_container_width=True, column_config=column_config)
+        # Format Valor as localized euro string for display
+        if "Valor (€)" in display_df.columns:
+            display_df["Valor (€)"] = display_df["Valor (€)"].apply(lambda v: formatar_moeda_euro(v) if pd.notna(v) else "")
+
+        # Format Data as dd/mm/YYYY string for display
+        if "Data" in display_df.columns:
+            display_df["Data"] = pd.to_datetime(display_df["Data"], errors="coerce").dt.strftime("%d/%m/%Y")
+
+        # Columns to right-align (valor already formatted as string)
+        right_align_cols = [c for c in ["Valor (€)", "Meio de Pagamento", "Data", "Quem Recebeu"] if c in display_df.columns]
+
+        try:
+            styler = display_df.style.set_properties(**{"text-align": "left"})
+            if right_align_cols:
+                styler = styler.set_properties(subset=right_align_cols, **{"text-align": "right"})
+            st.dataframe(styler, use_container_width=True)
+        except Exception:
+            # Fallback: if Styler isn't supported in this environment, render plain dataframe
+            st.dataframe(display_df, use_container_width=True)
 
 
 
