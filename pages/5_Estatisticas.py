@@ -1,3 +1,4 @@
+import locale
 import math
 from datetime import date, datetime, timedelta
 
@@ -116,7 +117,20 @@ def preparar_heatmap(df: pd.DataFrame) -> pd.DataFrame:
     trabalho = df.copy()
     trabalho["Semana"] = trabalho["Data"].dt.isocalendar().week.astype(int)
     trabalho["Ano"] = trabalho["Data"].dt.isocalendar().year.astype(int)
-    trabalho["Dia"] = trabalho["Data"].dt.day_name(locale="pt_PT")
+    try:
+        trabalho["Dia"] = trabalho["Data"].dt.day_name(locale="pt_PT")
+    except locale.Error:
+        traducao = {
+            "Monday": "segunda-feira",
+            "Tuesday": "terça-feira",
+            "Wednesday": "quarta-feira",
+            "Thursday": "quinta-feira",
+            "Friday": "sexta-feira",
+            "Saturday": "sábado",
+            "Sunday": "domingo",
+        }
+        trabalho["Dia"] = trabalho["Data"].dt.day_name().map(traducao).fillna(trabalho["Data"].dt.day_name())
+
     trabalho["Dia"] = pd.Categorical(
         trabalho["Dia"],
         categories=["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"],
