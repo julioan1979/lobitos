@@ -6,6 +6,7 @@ PAGE_PATHS = {
     "calendario": "pages/2_📅_Calendario.py",
     "voluntariado": "pages/3_👨‍👩‍👧‍👦_Voluntariado.py",
     "escuteiros": "pages/4_👦_Escuteiros.py",
+    "estatisticas": "pages/5_Estatisticas.py",
 }
 
 
@@ -32,10 +33,11 @@ def authenticated_menu() -> None:
     secao_info = context_labels()
     if secao_info:
         st.sidebar.caption(secao_info)
+    st.sidebar.page_link(PAGE_PATHS["home"], label="🏠 Dashboard")
+    st.sidebar.page_link(PAGE_PATHS["estatisticas"], label="📊 Estatísticas")
     st.sidebar.page_link(PAGE_PATHS["escuteiros"], label="🧒 Escuteiros")
     st.sidebar.page_link(PAGE_PATHS["calendario"], label="📅 Calendário")
     st.sidebar.page_link(PAGE_PATHS["voluntariado"], label="🙋 Voluntariado")
-    st.sidebar.page_link(PAGE_PATHS["home"], label="🏠 Dashboard")
 
     st.sidebar.markdown("---")
     if st.sidebar.button("Trocar secção", key="sidebar-change-section"):

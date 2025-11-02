@@ -11,6 +11,14 @@ from datetime import date, datetime, timedelta
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
 from airtable_config import context_labels, current_context, get_airtable_credentials, resolve_form_url
+from data_utils import (
+    construir_mapa_nomes_por_id,
+    escolher_coluna,
+    formatar_moeda_euro,
+    mapear_lista,
+    preparar_dataframe_estornos,
+    preparar_dataframe_recebimentos,
+)
 
 import locale
 
