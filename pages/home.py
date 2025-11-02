@@ -961,14 +961,20 @@ def dashboard_tesoureiro(dados: dict):
             column_config=column_config,
         )
 
-    # Recebimentos
-    st.divider()
-    st.markdown("### 🧾 Recebimentos")
-
     df_rec = dados.get("Recebimento", pd.DataFrame())
-    if df_rec.empty:
-        st.info("🛈 Não há recebimentos registados.")
-    else:
+    df_rec_limpo = pd.DataFrame()
+
+    df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
+    escuteiros_map = {}
+    if not df_escuteiros.empty and "id" in df_escuteiros.columns:
+        for coluna_nome in ("Nome do Escuteiro", "Escuteiro", "Nome"):
+            if coluna_nome in df_escuteiros.columns:
+                escuteiros_map = (
+                    df_escuteiros.set_index("id")[coluna_nome].dropna().to_dict()
+                )
+                break
+
+    if not df_rec.empty:
         colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
         colunas_existentes = [c for c in colunas_uteis if c in df_rec.columns]
         df_rec_limpo = df_rec[colunas_existentes].copy()
@@ -981,71 +987,61 @@ def dashboard_tesoureiro(dados: dict):
             "Quem Recebeu?": "Quem Recebeu",
         })
 
-        df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
-        escuteiros_map = {}
-        if not df_escuteiros.empty and "id" in df_escuteiros.columns:
-            for coluna_nome in ("Nome do Escuteiro", "Escuteiro", "Nome"):
-                if coluna_nome in df_escuteiros.columns:
-                    escuteiros_map = (
-                        df_escuteiros.set_index("id")[coluna_nome].dropna().to_dict()
-                    )
-                    break
-
         if escuteiros_map and "Escuteiro" in df_rec_limpo.columns:
             df_rec_limpo["Escuteiro"] = df_rec_limpo["Escuteiro"].apply(
                 lambda valor: mapear_lista(valor, escuteiros_map)
             )
 
-        df_permissoes = dados.get("Permissoes", pd.DataFrame())
-        permissoes_map = {}
-        if df_permissoes is not None and not df_permissoes.empty:
-            permissoes_map = construir_mapa_nomes_por_id({"Permissoes": df_permissoes})
+    df_permissoes = dados.get("Permissoes", pd.DataFrame())
+    permissoes_map = {}
+    if df_permissoes is not None and not df_permissoes.empty:
+        permissoes_map = construir_mapa_nomes_por_id({"Permissoes": df_permissoes})
 
-        mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
+    mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
 
-        if "Quem Recebeu" in df_rec_limpo.columns:
-            candidatos_quem_recebeu = [
-                col
-                for col in df_rec.columns
-                if col not in {"Quem Recebeu?", "Quem recebeu?_OLD"}
-                and col.lower().startswith("quem recebeu")
-            ]
+    if not df_rec_limpo.empty and "Quem Recebeu" in df_rec_limpo.columns:
+        candidatos_quem_recebeu = [
+            col
+            for col in df_rec.columns
+            if col not in {"Quem Recebeu?", "Quem recebeu?_OLD"}
+            and col.lower().startswith("quem recebeu")
+        ]
 
-            def _score_coluna(coluna: str) -> tuple[int, str]:
-                nome_lower = coluna.lower()
-                if "nome" in nome_lower or "name" in nome_lower:
-                    return (0, nome_lower)
-                if "lookup" in nome_lower:
-                    return (1, nome_lower)
-                return (2, nome_lower)
+        def _score_coluna(coluna: str) -> tuple[int, str]:
+            nome_lower = coluna.lower()
+            if "nome" in nome_lower or "name" in nome_lower:
+                return (0, nome_lower)
+            if "lookup" in nome_lower:
+                return (1, nome_lower)
+            return (2, nome_lower)
 
-            coluna_nome_quem_recebeu = None
-            if candidatos_quem_recebeu:
-                candidatos_quem_recebeu.sort(key=_score_coluna)
-                coluna_nome_quem_recebeu = candidatos_quem_recebeu[0]
+        coluna_nome_quem_recebeu = None
+        if candidatos_quem_recebeu:
+            candidatos_quem_recebeu.sort(key=_score_coluna)
+            coluna_nome_quem_recebeu = candidatos_quem_recebeu[0]
 
-            if coluna_nome_quem_recebeu:
-                df_rec_limpo["Quem Recebeu"] = df_rec[coluna_nome_quem_recebeu].apply(
-                    lambda valor: mapear_lista(valor, {})
-                )
-            elif permissoes_map:
-                df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, permissoes_map)
-                )
-            elif mapa_nomes_ids:
-                df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, mapa_nomes_ids)
-                )
-            elif escuteiros_map:
-                df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, escuteiros_map)
-                )
+        if coluna_nome_quem_recebeu:
+            df_rec_limpo["Quem Recebeu"] = df_rec[coluna_nome_quem_recebeu].apply(
+                lambda valor: mapear_lista(valor, {})
+            )
+        elif permissoes_map:
+            df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
+                lambda valor: mapear_lista(valor, permissoes_map)
+            )
+        elif mapa_nomes_ids:
+            df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
+                lambda valor: mapear_lista(valor, mapa_nomes_ids)
+            )
+        elif escuteiros_map:
+            df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
+                lambda valor: mapear_lista(valor, escuteiros_map)
+            )
 
-        if "Valor (€)" in df_rec_limpo.columns:
-            df_rec_limpo["Valor (€)"] = pd.to_numeric(df_rec_limpo["Valor (€)"], errors="coerce")
+    if not df_rec_limpo.empty and "Valor (€)" in df_rec_limpo.columns:
+        df_rec_limpo["Valor (€)"] = pd.to_numeric(df_rec_limpo["Valor (€)"], errors="coerce")
 
-        if "Data" in df_rec_limpo.columns:
-            df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.normalize()
+    if not df_rec_limpo.empty and "Data" in df_rec_limpo.columns:
+        df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.normalize()
 
         df_estornos = preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
 
