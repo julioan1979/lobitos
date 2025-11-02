@@ -1052,171 +1052,171 @@ def dashboard_tesoureiro(dados: dict):
 
     df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids = preparar_dataframe_recebimentos(dados)
 
-        df_estornos = preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
+    df_estornos = preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
 
-        periodo_key = "tesouraria_periodo_movimentos"
-        hoje = pd.Timestamp.today().date()
-        periodo_padrao = (hoje, hoje)
+    periodo_key = "tesouraria_periodo_movimentos"
+    hoje = pd.Timestamp.today().date()
+    periodo_padrao = (hoje, hoje)
 
-        def _converter_para_date(valor):
-            if isinstance(valor, date):
-                return valor
-            if isinstance(valor, datetime):
-                return valor.date()
-            if isinstance(valor, pd.Timestamp):
-                return valor.date()
-            return None
+    def _converter_para_date(valor):
+        if isinstance(valor, date):
+            return valor
+        if isinstance(valor, datetime):
+            return valor.date()
+        if isinstance(valor, pd.Timestamp):
+            return valor.date()
+        return None
 
-        def _normalizar_periodo(valor):
-            if isinstance(valor, (tuple, list)):
-                valores = []
-                for item in valor:
-                    convertido = _converter_para_date(item)
-                    if convertido is not None:
-                        valores.append(convertido)
+    def _normalizar_periodo(valor):
+        if isinstance(valor, (tuple, list)):
+            valores = []
+            for item in valor:
+                convertido = _converter_para_date(item)
+                if convertido is not None:
+                    valores.append(convertido)
+        else:
+            convertido = _converter_para_date(valor)
+            valores = [convertido] if convertido is not None else []
+
+        if len(valores) >= 2:
+            inicio, fim = valores[0], valores[1]
+        elif len(valores) == 1:
+            inicio = fim = valores[0]
+        else:
+            inicio, fim = periodo_padrao
+
+        if inicio > fim:
+            inicio, fim = fim, inicio
+
+        return (inicio, fim)
+
+    periodo_atual = _normalizar_periodo(st.session_state.get(periodo_key, periodo_padrao))
+
+    st.markdown("### 📊 Posição de Caixa")
+
+    filtro_cols = st.columns([2, 3])
+    novo_periodo: tuple[date, date] | None = None
+    with filtro_cols[1]:
+        botoes = st.columns(4)
+        if botoes[0].button("Hoje", use_container_width=True):
+            novo_periodo = (hoje, hoje)
+        if botoes[1].button("Últimos 3 dias", use_container_width=True):
+            novo_periodo = (hoje - timedelta(days=2), hoje)
+        if botoes[2].button("Esta semana", use_container_width=True):
+            inicio_semana = hoje - timedelta(days=hoje.weekday())
+            fim_semana = inicio_semana + timedelta(days=6)
+            novo_periodo = (inicio_semana, min(fim_semana, hoje))
+        if botoes[3].button("Este mês", use_container_width=True):
+            inicio_mes = date(hoje.year, hoje.month, 1)
+            if hoje.month == 12:
+                proximo_mes = date(hoje.year + 1, 1, 1)
             else:
-                convertido = _converter_para_date(valor)
-                valores = [convertido] if convertido is not None else []
+                proximo_mes = date(hoje.year, hoje.month + 1, 1)
+            fim_mes = proximo_mes - timedelta(days=1)
+            novo_periodo = (inicio_mes, fim_mes)
 
-            if len(valores) >= 2:
-                inicio, fim = valores[0], valores[1]
-            elif len(valores) == 1:
-                inicio = fim = valores[0]
-            else:
-                inicio, fim = periodo_padrao
+    valor_inicial = novo_periodo or periodo_atual
+    with filtro_cols[0]:
+        periodo_escolhido = st.date_input(
+            "Intervalo personalizado",
+            value=tuple(pd.Timestamp(v).date() for v in valor_inicial),
+            format="DD/MM/YYYY",
+        )
 
-            if inicio > fim:
-                inicio, fim = fim, inicio
+    if novo_periodo is not None:
+        periodo_atual = novo_periodo
+    else:
+        periodo_atual = _normalizar_periodo(periodo_escolhido)
 
-            return (inicio, fim)
+    st.session_state[periodo_key] = periodo_atual
 
-        periodo_atual = _normalizar_periodo(st.session_state.get(periodo_key, periodo_padrao))
+    data_inicio, data_fim = periodo_atual
+    data_inicio_ts = pd.Timestamp(data_inicio)
+    data_fim_ts = pd.Timestamp(data_fim)
 
-        st.markdown("### 📊 Posição de Caixa")
+    if "Data" in df_rec_limpo.columns:
+        mask_receb = df_rec_limpo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")
+        df_rec_periodo = df_rec_limpo.loc[mask_receb].copy()
+    else:
+        df_rec_periodo = df_rec_limpo.copy()
 
-        filtro_cols = st.columns([2, 3])
-        novo_periodo: tuple[date, date] | None = None
-        with filtro_cols[1]:
-            botoes = st.columns(4)
-            if botoes[0].button("Hoje", use_container_width=True):
-                novo_periodo = (hoje, hoje)
-            if botoes[1].button("Últimos 3 dias", use_container_width=True):
-                novo_periodo = (hoje - timedelta(days=2), hoje)
-            if botoes[2].button("Esta semana", use_container_width=True):
-                inicio_semana = hoje - timedelta(days=hoje.weekday())
-                fim_semana = inicio_semana + timedelta(days=6)
-                novo_periodo = (inicio_semana, min(fim_semana, hoje))
-            if botoes[3].button("Este mês", use_container_width=True):
-                inicio_mes = date(hoje.year, hoje.month, 1)
-                if hoje.month == 12:
-                    proximo_mes = date(hoje.year + 1, 1, 1)
-                else:
-                    proximo_mes = date(hoje.year, hoje.month + 1, 1)
-                fim_mes = proximo_mes - timedelta(days=1)
-                novo_periodo = (inicio_mes, fim_mes)
+    if not df_rec_periodo.empty and "Data" in df_rec_periodo.columns:
+        df_rec_periodo = df_rec_periodo.sort_values("Data", ascending=False)
 
-        valor_inicial = novo_periodo or periodo_atual
-        with filtro_cols[0]:
-            periodo_escolhido = st.date_input(
-                "Intervalo personalizado",
-                value=tuple(pd.Timestamp(v).date() for v in valor_inicial),
-                format="DD/MM/YYYY",
+    df_estornos_periodo = df_estornos.copy()
+    if not df_estornos_periodo.empty and "Data" in df_estornos_periodo.columns:
+        df_estornos_periodo = df_estornos_periodo[
+            df_estornos_periodo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")
+        ].copy()
+        df_estornos_periodo = df_estornos_periodo.sort_values("Data", ascending=False)
+
+    total_recebimentos_periodo = (
+        df_rec_periodo["Valor (€)"].sum() if "Valor (€)" in df_rec_periodo.columns else 0.0
+    )
+    total_estornos_periodo = (
+        df_estornos_periodo["Valor (€)"].sum() if "Valor (€)" in df_estornos_periodo.columns else 0.0
+    )
+    saldo_periodo = total_recebimentos_periodo - total_estornos_periodo
+
+    st.markdown("#### 🧾 Registos no período")
+    if df_rec_periodo.empty:
+        st.info("ℹ️ Nenhum recebimento no período selecionado.")
+    else:
+        display_recebimentos = df_rec_periodo.copy()
+        if "Valor (€)" in display_recebimentos.columns:
+            display_recebimentos["Valor (€)"] = display_recebimentos["Valor (€)"].apply(
+                lambda v: formatar_moeda_euro(v) if pd.notna(v) else ""
             )
+        if "Data" in display_recebimentos.columns:
+            display_recebimentos["Data"] = pd.to_datetime(
+                display_recebimentos["Data"], errors="coerce"
+            ).dt.strftime("%d/%m/%Y")
 
-        if novo_periodo is not None:
-            periodo_atual = novo_periodo
-        else:
-            periodo_atual = _normalizar_periodo(periodo_escolhido)
+        cols = list(display_recebimentos.columns)
+        right_align_cols = cols[1:] if len(cols) > 1 else []
 
-        st.session_state[periodo_key] = periodo_atual
-
-        data_inicio, data_fim = periodo_atual
-        data_inicio_ts = pd.Timestamp(data_inicio)
-        data_fim_ts = pd.Timestamp(data_fim)
-
-        if "Data" in df_rec_limpo.columns:
-            mask_receb = df_rec_limpo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")
-            df_rec_periodo = df_rec_limpo.loc[mask_receb].copy()
-        else:
-            df_rec_periodo = df_rec_limpo.copy()
-
-        if not df_rec_periodo.empty and "Data" in df_rec_periodo.columns:
-            df_rec_periodo = df_rec_periodo.sort_values("Data", ascending=False)
-
-        df_estornos_periodo = df_estornos.copy()
-        if not df_estornos_periodo.empty and "Data" in df_estornos_periodo.columns:
-            df_estornos_periodo = df_estornos_periodo[
-                df_estornos_periodo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")
-            ].copy()
-            df_estornos_periodo = df_estornos_periodo.sort_values("Data", ascending=False)
-
-        total_recebimentos_periodo = (
-            df_rec_periodo["Valor (€)"].sum() if "Valor (€)" in df_rec_periodo.columns else 0.0
-        )
-        total_estornos_periodo = (
-            df_estornos_periodo["Valor (€)"].sum() if "Valor (€)" in df_estornos_periodo.columns else 0.0
-        )
-        saldo_periodo = total_recebimentos_periodo - total_estornos_periodo
-
-        st.markdown("#### 🧾 Registos no período")
-        if df_rec_periodo.empty:
-            st.info("ℹ️ Nenhum recebimento no período selecionado.")
-        else:
-            display_recebimentos = df_rec_periodo.copy()
-            if "Valor (€)" in display_recebimentos.columns:
-                display_recebimentos["Valor (€)"] = display_recebimentos["Valor (€)"].apply(
-                    lambda v: formatar_moeda_euro(v) if pd.notna(v) else ""
-                )
-            if "Data" in display_recebimentos.columns:
-                display_recebimentos["Data"] = pd.to_datetime(
-                    display_recebimentos["Data"], errors="coerce"
-                ).dt.strftime("%d/%m/%Y")
-
-            cols = list(display_recebimentos.columns)
-            right_align_cols = cols[1:] if len(cols) > 1 else []
-
+        try:
+            styler = display_recebimentos.style.set_properties(**{"text-align": "left"})
+            if right_align_cols:
+                styler = styler.set_properties(subset=right_align_cols, **{"text-align": "right"})
+            st.dataframe(styler, use_container_width=True)
+        except Exception:
             try:
-                styler = display_recebimentos.style.set_properties(**{"text-align": "left"})
-                if right_align_cols:
-                    styler = styler.set_properties(subset=right_align_cols, **{"text-align": "right"})
-                st.dataframe(styler, use_container_width=True)
+                fallback_config = {c: st.column_config.TextColumn(c) for c in right_align_cols}
+                st.dataframe(display_recebimentos, use_container_width=True, column_config=fallback_config)
             except Exception:
-                try:
-                    fallback_config = {c: st.column_config.TextColumn(c) for c in right_align_cols}
-                    st.dataframe(display_recebimentos, use_container_width=True, column_config=fallback_config)
-                except Exception:
-                    st.dataframe(display_recebimentos, use_container_width=True)
+                st.dataframe(display_recebimentos, use_container_width=True)
 
-        st.markdown("### ↩️ Estornos de Recebimento")
-        if df_estornos.empty:
-            st.info("ℹ️ Nenhum estorno registado.")
-        elif df_estornos_periodo.empty:
-            st.info("ℹ️ Nenhum estorno no período selecionado.")
-        else:
-            display_estornos = df_estornos_periodo.copy()
-            if "Valor (€)" in display_estornos.columns:
-                display_estornos["Valor (€)"] = display_estornos["Valor (€)"].apply(
-                    lambda v: formatar_moeda_euro(v) if pd.notna(v) else ""
-                )
-            if "Data" in display_estornos.columns:
-                display_estornos["Data"] = pd.to_datetime(
-                    display_estornos["Data"], errors="coerce"
-                ).dt.strftime("%d/%m/%Y")
+    st.markdown("### ↩️ Estornos de Recebimento")
+    if df_estornos.empty:
+        st.info("ℹ️ Nenhum estorno registado.")
+    elif df_estornos_periodo.empty:
+        st.info("ℹ️ Nenhum estorno no período selecionado.")
+    else:
+        display_estornos = df_estornos_periodo.copy()
+        if "Valor (€)" in display_estornos.columns:
+            display_estornos["Valor (€)"] = display_estornos["Valor (€)"].apply(
+                lambda v: formatar_moeda_euro(v) if pd.notna(v) else ""
+            )
+        if "Data" in display_estornos.columns:
+            display_estornos["Data"] = pd.to_datetime(
+                display_estornos["Data"], errors="coerce"
+            ).dt.strftime("%d/%m/%Y")
 
-            cols_est = list(display_estornos.columns)
-            right_align_est = cols_est[1:] if len(cols_est) > 1 else []
+        cols_est = list(display_estornos.columns)
+        right_align_est = cols_est[1:] if len(cols_est) > 1 else []
 
+        try:
+            styler_est = display_estornos.style.set_properties(**{"text-align": "left"})
+            if right_align_est:
+                styler_est = styler_est.set_properties(subset=right_align_est, **{"text-align": "right"})
+            st.dataframe(styler_est, use_container_width=True)
+        except Exception:
             try:
-                styler_est = display_estornos.style.set_properties(**{"text-align": "left"})
-                if right_align_est:
-                    styler_est = styler_est.set_properties(subset=right_align_est, **{"text-align": "right"})
-                st.dataframe(styler_est, use_container_width=True)
+                fallback_config_est = {c: st.column_config.TextColumn(c) for c in right_align_est}
+                st.dataframe(display_estornos, use_container_width=True, column_config=fallback_config_est)
             except Exception:
-                try:
-                    fallback_config_est = {c: st.column_config.TextColumn(c) for c in right_align_est}
-                    st.dataframe(display_estornos, use_container_width=True, column_config=fallback_config_est)
-                except Exception:
-                    st.dataframe(display_estornos, use_container_width=True)
+                st.dataframe(display_estornos, use_container_width=True)
         st.caption(
             f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
         )
