@@ -741,8 +741,8 @@ def dashboard_pais():
                 proximo_evento = df_cal_future.iloc[0]
         if proximo_evento is not None:
             data_evt = proximo_evento["__data"].strftime('%d/%m/%Y') if not pd.isna(proximo_evento["__data"]) else "Data a definir"
-            agenda_evt = proximo_evento.get("Agenda", "Atividade da Alcateia")
-            st.info(f"📅 Próximo evento da Alcateia: {data_evt} – {agenda_evt}")
+            agenda_evt = proximo_evento.get("Agenda", "Atividade da Tropa")
+            st.info(f"📅 Próximo evento da Tropa: {data_evt} – {agenda_evt}")
         else:
             st.info("ℹ️ Não há eventos futuros registados neste momento.")
 
