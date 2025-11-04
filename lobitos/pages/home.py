@@ -135,6 +135,7 @@ def mostrar_barra_acoes(botoes: list[tuple[str, str]], espacador: int = 6) -> di
 
 
 
+
 def mapear_lista(valor, mapping):
     if isinstance(valor, list):
         return ", ".join(mapping.get(v, v) for v in valor)
@@ -396,6 +397,7 @@ def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_he
         )
 
 
+
 def normalizar_url_airtable(valor_url, fallback: str) -> str:
     """Garante que o URL do Airtable está no formato embed e devolve um fallback se estiver vazio."""
     bruto = valor_url
@@ -462,39 +464,3 @@ def dashboard_pais():
     df_volunt = dados.get("Voluntariado Pais", pd.DataFrame())
     df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
     df_recipes = dados.get("Recipes", pd.DataFrame())
-
-    if df_escuteiros is None or df_escuteiros.empty or "id" not in df_escuteiros.columns:
-        st.warning("ℹ️ Ainda não há escuteiros registados ou a tabela não está completa.")
-        return
-
-    df_escuteiros = df_escuteiros.copy()
-
-    if allowed_escuteiros:
-        df_escuteiros = df_escuteiros[df_escuteiros["id"].isin(allowed_escuteiros)]
-        if df_escuteiros.empty:
-            st.warning("⚠️ Não existem dados para os escuteiros associados a esta conta.")
-            return
-    elif role == "pais":
-        st.warning("ℹ️ A sua conta ainda não tem escuteiros associados. Contacte a equipa de administração.")
-        return
-
-    def _formatar_label(row: pd.Series) -> str:
-        nome = row.get("Nome do Escuteiro")
-        codigo = row.get("ID_Escuteiro")
-        if pd.isna(nome) or not str(nome).strip():
-            nome = "Escuteiro sem nome"
-        if pd.notna(codigo) and str(codigo).strip():
-            return f"{nome} ({codigo})"
-        return str(nome)
-
-    df_escuteiros["__label"] = df_escuteiros.apply(_formatar_label, axis=1)
-    df_escuteiros = df_escuteiros.sort_values("__label")
-
-    escuteiros_ids = df_escuteiros["id"].tolist()
-    label_por_id = dict(zip(df_escuteiros["id"], df_escuteiros["__label"]))
-
-    sess_key = "escuteiro_selecionado"
-    if sess_key not in st.session_state or st.session_state[sess_key] not in escuteiros_ids:
-        st.session_state[sess_key] = escuteiros_ids[0]
-
-    escuteiro_id = st.selectbox(
