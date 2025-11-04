@@ -11,14 +11,6 @@ from datetime import date, datetime, timedelta
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
 from airtable_config import context_labels, current_context, get_airtable_credentials, resolve_form_url
-from data_utils import (
-    construir_mapa_nomes_por_id,
-    escolher_coluna,
-    formatar_moeda_euro,
-    mapear_lista,
-    preparar_dataframe_estornos,
-    preparar_dataframe_recebimentos,
-)
 
 import locale
 
@@ -376,95 +368,6 @@ def preparar_dataframe_estornos(
         resultado = resultado[resultado["Valor (€)"].notna()]
 
     return resultado
-
-
-def preparar_dataframe_recebimentos(
-    dados: dict,
-) -> tuple[pd.DataFrame, dict[str, str], dict[str, str], dict[str, str]]:
-    """Normaliza e enriquece a tabela de Recebimento para reutilização nas vistas."""
-    df_rec = dados.get("Recebimento", pd.DataFrame())
-    df_rec_limpo = pd.DataFrame()
-
-    df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
-    escuteiros_map: dict[str, str] = {}
-    if isinstance(df_escuteiros, pd.DataFrame) and not df_escuteiros.empty and "id" in df_escuteiros.columns:
-        for coluna_nome in ("Nome do Escuteiro", "Escuteiro", "Nome"):
-            if coluna_nome in df_escuteiros.columns:
-                escuteiros_map = (
-                    df_escuteiros.set_index("id")[coluna_nome].dropna().to_dict()
-                )
-                break
-
-    if isinstance(df_rec, pd.DataFrame) and not df_rec.empty:
-        colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
-        colunas_existentes = [c for c in colunas_uteis if c in df_rec.columns]
-        df_rec_limpo = df_rec[colunas_existentes].copy()
-
-        df_rec_limpo = df_rec_limpo.rename(columns={
-            "Escuteiros": "Escuteiro",
-            "Valor Recebido": "Valor (€)",
-            "Meio de Pagamento": "Meio de Pagamento",
-            "Date": "Data",
-            "Quem Recebeu?": "Quem Recebeu",
-        })
-
-        if escuteiros_map and "Escuteiro" in df_rec_limpo.columns:
-            df_rec_limpo["Escuteiro"] = df_rec_limpo["Escuteiro"].apply(
-                lambda valor: mapear_lista(valor, escuteiros_map)
-            )
-
-    df_permissoes = dados.get("Permissoes", pd.DataFrame())
-    permissoes_map: dict[str, str] = {}
-    if isinstance(df_permissoes, pd.DataFrame) and not df_permissoes.empty:
-        permissoes_map = construir_mapa_nomes_por_id({"Permissoes": df_permissoes})
-
-    mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
-
-    if not df_rec_limpo.empty and "Quem Recebeu" in df_rec_limpo.columns:
-        candidatos_quem_recebeu = [
-            col
-            for col in df_rec.columns
-            if col not in {"Quem Recebeu?", "Quem recebeu?_OLD"}
-            and col.lower().startswith("quem recebeu")
-        ]
-
-        def _score_coluna(coluna: str) -> tuple[int, str]:
-            nome_lower = coluna.lower()
-            if "nome" in nome_lower or "name" in nome_lower:
-                return (0, nome_lower)
-            if "lookup" in nome_lower:
-                return (1, nome_lower)
-            return (2, nome_lower)
-
-        coluna_nome_quem_recebeu = None
-        if candidatos_quem_recebeu:
-            candidatos_quem_recebeu.sort(key=_score_coluna)
-            coluna_nome_quem_recebeu = candidatos_quem_recebeu[0]
-
-        if coluna_nome_quem_recebeu:
-            df_rec_limpo["Quem Recebeu"] = df_rec[coluna_nome_quem_recebeu].apply(
-                lambda valor: mapear_lista(valor, {})
-            )
-        elif permissoes_map:
-            df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                lambda valor: mapear_lista(valor, permissoes_map)
-            )
-        elif mapa_nomes_ids:
-            df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                lambda valor: mapear_lista(valor, mapa_nomes_ids)
-            )
-        elif escuteiros_map:
-            df_rec_limpo["Quem Recebeu"] = df_rec_limpo["Quem Recebeu"].apply(
-                lambda valor: mapear_lista(valor, escuteiros_map)
-            )
-
-    if not df_rec_limpo.empty and "Valor (€)" in df_rec_limpo.columns:
-        df_rec_limpo["Valor (€)"] = pd.to_numeric(df_rec_limpo["Valor (€)"], errors="coerce")
-
-    if not df_rec_limpo.empty and "Data" in df_rec_limpo.columns:
-        df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.normalize()
-
-    return df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids
 
 def mostrar_formulario(session_key: str, titulo: str, iframe_url: str, iframe_height: int = 600, container_height=None) -> None:
     if not st.session_state.get(session_key, False):
@@ -1058,13 +961,164 @@ def dashboard_tesoureiro(dados: dict):
             column_config=column_config,
         )
 
-    df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids = preparar_dataframe_recebimentos(dados)
+    # Recebimentos
+    st.divider()
+    st.markdown("### 🧾 Recebimentos")
 
-    df_estornos = preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
+    def _preparar_recebimentos(dados: dict) -> tuple[pd.DataFrame, dict[str, str], dict[str, str], dict[str, str]]:
+        df_rec = dados.get("Recebimento", pd.DataFrame())
+        expected_columns = ["Escuteiro", "Valor (€)", "Meio de Pagamento", "Data", "Quem Recebeu"]
+        if df_rec is None or df_rec.empty:
+            vazio = pd.DataFrame(columns=expected_columns)
+            vazio["Valor (€)"] = pd.Series(dtype="float64")
+            vazio["Data"] = pd.Series(dtype="datetime64[ns]")
+            return vazio, {}, {}, construir_mapa_nomes_por_id(dados)
+
+        colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
+        colunas_existentes = [col for col in colunas_uteis if col in df_rec.columns]
+        if not colunas_existentes:
+            vazio = pd.DataFrame(columns=expected_columns)
+            vazio["Valor (€)"] = pd.Series(dtype="float64")
+            vazio["Data"] = pd.Series(dtype="datetime64[ns]")
+            return vazio, {}, {}, construir_mapa_nomes_por_id(dados)
+
+        df_limpo = df_rec[colunas_existentes].copy().rename(
+            columns={
+                "Escuteiros": "Escuteiro",
+                "Valor Recebido": "Valor (€)",
+                "Meio de Pagamento": "Meio de Pagamento",
+                "Date": "Data",
+                "Quem Recebeu?": "Quem Recebeu",
+            }
+        )
+
+        df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
+        escuteiros_map: dict[str, str] = {}
+        if isinstance(df_escuteiros, pd.DataFrame) and not df_escuteiros.empty and "id" in df_escuteiros.columns:
+            for coluna_nome in ("Nome do Escuteiro", "Escuteiro", "Nome"):
+                if coluna_nome in df_escuteiros.columns:
+                    escuteiros_map = df_escuteiros.set_index("id")[coluna_nome].dropna().to_dict()
+                    break
+
+        if escuteiros_map and "Escuteiro" in df_limpo.columns:
+            df_limpo["Escuteiro"] = df_limpo["Escuteiro"].apply(lambda valor: mapear_lista(valor, escuteiros_map))
+
+        df_permissoes = dados.get("Permissoes", pd.DataFrame())
+        permissoes_map: dict[str, str] = {}
+        if isinstance(df_permissoes, pd.DataFrame) and not df_permissoes.empty:
+            permissoes_map = construir_mapa_nomes_por_id({"Permissoes": df_permissoes})
+
+        mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
+
+        if "Quem Recebeu" in df_limpo.columns:
+            candidatos_quem_recebeu = [
+                coluna
+                for coluna in df_rec.columns
+                if coluna not in {"Quem Recebeu?", "Quem recebeu?_OLD"} and coluna.lower().startswith("quem recebeu")
+            ]
+
+            def _score_coluna(nome_coluna: str) -> tuple[int, str]:
+                nome_lower = nome_coluna.lower()
+                if "nome" in nome_lower or "name" in nome_lower:
+                    return (0, nome_lower)
+                if "lookup" in nome_lower:
+                    return (1, nome_lower)
+                return (2, nome_lower)
+
+            coluna_escolhida = None
+            if candidatos_quem_recebeu:
+                candidatos_quem_recebeu.sort(key=_score_coluna)
+                coluna_escolhida = candidatos_quem_recebeu[0]
+
+            if coluna_escolhida:
+                df_limpo["Quem Recebeu"] = df_rec[coluna_escolhida].apply(lambda valor: mapear_lista(valor, {}))
+            elif permissoes_map:
+                df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(
+                    lambda valor: mapear_lista(valor, permissoes_map)
+                )
+            elif mapa_nomes_ids:
+                df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(
+                    lambda valor: mapear_lista(valor, mapa_nomes_ids)
+                )
+            elif escuteiros_map:
+                df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(
+                    lambda valor: mapear_lista(valor, escuteiros_map)
+                )
+
+        if "Valor (€)" in df_limpo.columns:
+            df_limpo["Valor (€)"] = pd.to_numeric(df_limpo["Valor (€)"], errors="coerce")
+        else:
+            df_limpo["Valor (€)"] = pd.Series(dtype="float64")
+
+        if "Data" in df_limpo.columns:
+            df_limpo["Data"] = pd.to_datetime(df_limpo["Data"], errors="coerce").dt.normalize()
+        else:
+            df_limpo["Data"] = pd.Series(dtype="datetime64[ns]")
+
+        for coluna in ("Escuteiro", "Meio de Pagamento", "Quem Recebeu"):
+            if coluna not in df_limpo.columns:
+                df_limpo[coluna] = ""
+
+        df_limpo = df_limpo[expected_columns]
+        return df_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids
+
+    def _normalizar_estornos(df_estornos: pd.DataFrame | None) -> pd.DataFrame:
+        expected_columns = ["Escuteiro", "Valor (€)", "Motivo", "Data", "Quem Recebeu"]
+        if df_estornos is None or not isinstance(df_estornos, pd.DataFrame) or df_estornos.empty:
+            vazio = pd.DataFrame(columns=expected_columns)
+            vazio["Valor (€)"] = pd.Series(dtype="float64")
+            vazio["Data"] = pd.Series(dtype="datetime64[ns]")
+            return vazio
+
+        resultado = df_estornos.copy()
+        if "Valor (€)" in resultado.columns:
+            resultado["Valor (€)"] = pd.to_numeric(resultado["Valor (€)"], errors="coerce")
+        else:
+            resultado["Valor (€)"] = pd.Series(dtype="float64")
+
+        if "Data" in resultado.columns:
+            resultado["Data"] = pd.to_datetime(resultado["Data"], errors="coerce").dt.normalize()
+        else:
+            resultado["Data"] = pd.Series(dtype="datetime64[ns]")
+
+        for coluna in expected_columns:
+            if coluna not in resultado.columns:
+                if coluna == "Valor (€)":
+                    resultado[coluna] = pd.Series(dtype="float64")
+                elif coluna == "Data":
+                    resultado[coluna] = pd.Series(dtype="datetime64[ns]")
+                else:
+                    resultado[coluna] = ""
+
+        return resultado[expected_columns]
+
+    def _aplicar_formatacao_display(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+        display_df = df.copy()
+        if "Valor (€)" in display_df.columns:
+            display_df["Valor (€)"] = display_df["Valor (€)"].apply(
+                lambda valor: formatar_moeda_euro(valor) if pd.notna(valor) else ""
+            )
+        if "Data" in display_df.columns:
+            display_df["Data"] = pd.to_datetime(display_df["Data"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+        return display_df
+
+    def _renderizar_tabela(df_base: pd.DataFrame, mensagem_vazio: str) -> None:
+        if df_base.empty:
+            st.info(mensagem_vazio)
+            return
+        st.dataframe(_aplicar_formatacao_display(df_base), use_container_width=True)
+
+    df_rec_origem = dados.get("Recebimento", pd.DataFrame())
+    df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids = _preparar_recebimentos(dados)
+    df_estornos = _normalizar_estornos(
+        preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
+    )
 
     periodo_key = "tesouraria_periodo_movimentos"
     hoje = pd.Timestamp.today().date()
-    periodo_padrao = (hoje, hoje)
+    periodo_padrao: tuple[date, date] = (hoje, hoje)
 
     def _converter_para_date(valor):
         if isinstance(valor, date):
@@ -1077,14 +1131,11 @@ def dashboard_tesoureiro(dados: dict):
 
     def _normalizar_periodo(valor):
         if isinstance(valor, (tuple, list)):
-            valores = []
-            for item in valor:
-                convertido = _converter_para_date(item)
-                if convertido is not None:
-                    valores.append(convertido)
+            valores = [_converter_para_date(item) for item in valor]
+            valores = [item for item in valores if item is not None]
         else:
-            convertido = _converter_para_date(valor)
-            valores = [convertido] if convertido is not None else []
+            item = _converter_para_date(valor)
+            valores = [item] if item is not None else []
 
         if len(valores) >= 2:
             inicio, fim = valores[0], valores[1]
@@ -1095,8 +1146,15 @@ def dashboard_tesoureiro(dados: dict):
 
         if inicio > fim:
             inicio, fim = fim, inicio
+        return inicio, fim
 
-        return (inicio, fim)
+    def _periodo_mes_atual(referencia: date) -> tuple[date, date]:
+        primeiro_dia = date(referencia.year, referencia.month, 1)
+        if referencia.month == 12:
+            proximo_mes = date(referencia.year + 1, 1, 1)
+        else:
+            proximo_mes = date(referencia.year, referencia.month + 1, 1)
+        return primeiro_dia, proximo_mes - timedelta(days=1)
 
     periodo_atual = _normalizar_periodo(st.session_state.get(periodo_key, periodo_padrao))
 
@@ -1104,134 +1162,71 @@ def dashboard_tesoureiro(dados: dict):
 
     filtro_cols = st.columns([2, 3])
     novo_periodo: tuple[date, date] | None = None
+
+    atalhos_periodo = {
+        "Hoje": lambda referencia: (referencia, referencia),
+        "Últimos 3 dias": lambda referencia: (referencia - timedelta(days=2), referencia),
+        "Esta semana": lambda referencia: (
+            referencia - timedelta(days=referencia.weekday()),
+            min(referencia - timedelta(days=referencia.weekday()) + timedelta(days=6), referencia),
+        ),
+        "Este mês": _periodo_mes_atual,
+    }
+
     with filtro_cols[1]:
-        botoes = st.columns(4)
-        if botoes[0].button("Hoje", use_container_width=True):
-            novo_periodo = (hoje, hoje)
-        if botoes[1].button("Últimos 3 dias", use_container_width=True):
-            novo_periodo = (hoje - timedelta(days=2), hoje)
-        if botoes[2].button("Esta semana", use_container_width=True):
-            inicio_semana = hoje - timedelta(days=hoje.weekday())
-            fim_semana = inicio_semana + timedelta(days=6)
-            novo_periodo = (inicio_semana, min(fim_semana, hoje))
-        if botoes[3].button("Este mês", use_container_width=True):
-            inicio_mes = date(hoje.year, hoje.month, 1)
-            if hoje.month == 12:
-                proximo_mes = date(hoje.year + 1, 1, 1)
-            else:
-                proximo_mes = date(hoje.year, hoje.month + 1, 1)
-            fim_mes = proximo_mes - timedelta(days=1)
-            novo_periodo = (inicio_mes, fim_mes)
+        botoes = st.columns(len(atalhos_periodo))
+        for (rotulo, funcao_periodo), coluna in zip(atalhos_periodo.items(), botoes):
+            if coluna.button(rotulo, use_container_width=True):
+                novo_periodo = funcao_periodo(hoje)
+                break
 
     valor_inicial = novo_periodo or periodo_atual
     with filtro_cols[0]:
         periodo_escolhido = st.date_input(
             "Intervalo personalizado",
-            value=tuple(pd.Timestamp(v).date() for v in valor_inicial),
+            value=valor_inicial,
             format="DD/MM/YYYY",
         )
 
-    if novo_periodo is not None:
-        periodo_atual = novo_periodo
-    else:
-        periodo_atual = _normalizar_periodo(periodo_escolhido)
-
+    periodo_atual = _normalizar_periodo(novo_periodo if novo_periodo is not None else periodo_escolhido)
     st.session_state[periodo_key] = periodo_atual
 
     data_inicio, data_fim = periodo_atual
     data_inicio_ts = pd.Timestamp(data_inicio)
     data_fim_ts = pd.Timestamp(data_fim)
 
-    if "Data" in df_rec_limpo.columns:
-        mask_receb = df_rec_limpo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")
-        df_rec_periodo = df_rec_limpo.loc[mask_receb].copy()
-    else:
-        df_rec_periodo = df_rec_limpo.copy()
+    df_rec_periodo = df_rec_limpo[df_rec_limpo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")].copy()
+    df_rec_periodo.sort_values("Data", ascending=False, inplace=True)
 
-    if not df_rec_periodo.empty and "Data" in df_rec_periodo.columns:
-        df_rec_periodo = df_rec_periodo.sort_values("Data", ascending=False)
+    df_estornos_periodo = df_estornos[df_estornos["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")].copy()
+    df_estornos_periodo.sort_values("Data", ascending=False, inplace=True)
 
-    df_estornos_periodo = df_estornos.copy()
-    if not df_estornos_periodo.empty and "Data" in df_estornos_periodo.columns:
-        df_estornos_periodo = df_estornos_periodo[
-            df_estornos_periodo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")
-        ].copy()
-        df_estornos_periodo = df_estornos_periodo.sort_values("Data", ascending=False)
+    total_recebimentos = df_rec_periodo["Valor (€)"].sum()
+    total_estornos = df_estornos_periodo["Valor (€)"].sum()
+    saldo = total_recebimentos - total_estornos
 
-    total_recebimentos_periodo = (
-        df_rec_periodo["Valor (€)"].sum() if "Valor (€)" in df_rec_periodo.columns else 0.0
+    st.markdown("#### 🧾 Recebimentos")
+    mensagem_recebimentos = (
+        "ℹ️ Não há recebimentos registados."
+        if df_rec_origem is None or df_rec_origem.empty
+        else "ℹ️ Nenhum recebimento no período selecionado."
     )
-    total_estornos_periodo = (
-        df_estornos_periodo["Valor (€)"].sum() if "Valor (€)" in df_estornos_periodo.columns else 0.0
-    )
-    saldo_periodo = total_recebimentos_periodo - total_estornos_periodo
-
-    st.markdown("#### 🧾 Registos no período")
-    if df_rec_periodo.empty:
-        st.info("ℹ️ Nenhum recebimento no período selecionado.")
-    else:
-        display_recebimentos = df_rec_periodo.copy()
-        if "Valor (€)" in display_recebimentos.columns:
-            display_recebimentos["Valor (€)"] = display_recebimentos["Valor (€)"].apply(
-                lambda v: formatar_moeda_euro(v) if pd.notna(v) else ""
-            )
-        if "Data" in display_recebimentos.columns:
-            display_recebimentos["Data"] = pd.to_datetime(
-                display_recebimentos["Data"], errors="coerce"
-            ).dt.strftime("%d/%m/%Y")
-
-        cols = list(display_recebimentos.columns)
-        right_align_cols = cols[1:] if len(cols) > 1 else []
-
-        try:
-            styler = display_recebimentos.style.set_properties(**{"text-align": "left"})
-            if right_align_cols:
-                styler = styler.set_properties(subset=right_align_cols, **{"text-align": "right"})
-            st.dataframe(styler, use_container_width=True)
-        except Exception:
-            try:
-                fallback_config = {c: st.column_config.TextColumn(c) for c in right_align_cols}
-                st.dataframe(display_recebimentos, use_container_width=True, column_config=fallback_config)
-            except Exception:
-                st.dataframe(display_recebimentos, use_container_width=True)
+    _renderizar_tabela(df_rec_periodo, mensagem_recebimentos)
 
     st.markdown("### ↩️ Estornos de Recebimento")
     if df_estornos.empty:
         st.info("ℹ️ Nenhum estorno registado.")
-    elif df_estornos_periodo.empty:
-        st.info("ℹ️ Nenhum estorno no período selecionado.")
     else:
-        display_estornos = df_estornos_periodo.copy()
-        if "Valor (€)" in display_estornos.columns:
-            display_estornos["Valor (€)"] = display_estornos["Valor (€)"].apply(
-                lambda v: formatar_moeda_euro(v) if pd.notna(v) else ""
-            )
-        if "Data" in display_estornos.columns:
-            display_estornos["Data"] = pd.to_datetime(
-                display_estornos["Data"], errors="coerce"
-            ).dt.strftime("%d/%m/%Y")
+        _renderizar_tabela(df_estornos_periodo, "ℹ️ Nenhum estorno no período selecionado.")
 
-        cols_est = list(display_estornos.columns)
-        right_align_est = cols_est[1:] if len(cols_est) > 1 else []
+    st.caption(
+        f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
+    )
 
-        try:
-            styler_est = display_estornos.style.set_properties(**{"text-align": "left"})
-            if right_align_est:
-                styler_est = styler_est.set_properties(subset=right_align_est, **{"text-align": "right"})
-            st.dataframe(styler_est, use_container_width=True)
-        except Exception:
-            try:
-                fallback_config_est = {c: st.column_config.TextColumn(c) for c in right_align_est}
-                st.dataframe(display_estornos, use_container_width=True, column_config=fallback_config_est)
-            except Exception:
-                st.dataframe(display_estornos, use_container_width=True)
-        st.caption(
-            f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
-        )
-        col_metricas = st.columns(3)
-        col_metricas[0].metric("Recebido no período", formatar_moeda_euro(total_recebimentos_periodo))
-        col_metricas[1].metric("Estornado no período", formatar_moeda_euro(total_estornos_periodo))
-        col_metricas[2].metric("Saldo do período", formatar_moeda_euro(saldo_periodo))
+    col_metricas = st.columns(3)
+    col_metricas[0].metric("Recebido no período", formatar_moeda_euro(total_recebimentos))
+    col_metricas[1].metric("Estornado no período", formatar_moeda_euro(total_estornos))
+    col_metricas[2].metric("Saldo do período", formatar_moeda_euro(saldo))
 
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
