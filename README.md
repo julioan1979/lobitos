@@ -1,25 +1,11 @@
-<<<<<<< HEAD
 ## Portal Multi-Secção
 
-Esta app Streamlit permite alternar entre diferentes secções/agrupamentos (ex.: Lobitos, Exploradores) partilhando a mesma interface.
+Aplicação Streamlit que permite alternar entre diferentes secções/agrupamentos (ex.: Lobitos, Exploradores) mantendo uma interface comum.
 
 ### Configuração dos secrets
-
-Cada combinação deve ter um bloco `airtable_<agrupamento>_<secao>`:
+Cada secção **tem de** definir um bloco `[airtable_<agrupamento>_<secao>]` com as chaves abaixo:
 
 ```toml
-=======
-﻿## Portal Lobitos – Multi-Secção
-
-### Escolha de secção
-- Ao abrir a app, o utilizador escolhe agrupamento/secção.
-- A escolha fica guardada na sessão e pode ser trocada mais tarde.
-
-### Configuração nos secrets
-Cada secção **tem de** definir um bloco irtable_<agrupamento>_<secao> com todas as chaves abaixo:
-
-`	oml
->>>>>>> master
 [airtable_521_lobitos]
 AIRTABLE_TOKEN = "..."
 AIRTABLE_BASE_ID = "..."
@@ -27,35 +13,24 @@ AGRUPAMENTO_LABEL = "Agrupamento 521"
 SECAO_LABEL = "Lobitos"
 DEFAULT_LANCHE_FORM_URL = "https://airtable.com/embed/..."
 DEFAULT_VOLUNT_FORM_URL = "https://airtable.com/embed/..."
-<<<<<<< HEAD
-# chaves opcionais:
-=======
->>>>>>> master
 CANCEL_LANCHE_FORM_URL = "https://airtable.com/embed/..."
 RECEBIMENTO_FORM_URL = "https://airtable.com/embed/..."
 ESTORNO_FORM_URL = "https://airtable.com/embed/..."
 FORCED_CANCEL_FORM_URL = "https://airtable.com/embed/..."
 FORCED_ORDER_FORM_URL = "https://airtable.com/embed/..."
 MANAGE_ESCUTEIROS_FORM_URL = "https://airtable.com/embed/..."
-<<<<<<< HEAD
 ```
 
-`context_extra("NOME", fallback)` devolve qualquer URL configurado (ou o _fallback_).
+Se algum campo estiver em falta para a secção selecionada, a aplicação informa o utilizador e não mostra o formulário correspondente.
+
+A função `context_extra("NOME", fallback)` devolve qualquer URL configurado (ou o fallback indicado).
 
 ### Fluxo de utilização
+1. Ao entrar, o utilizador escolhe a secção; a escolha fica em `st.session_state`.
+2. O login valida o utilizador na base Airtable dessa secção.
+3. Cada página mostra o rótulo `Agrupamento · Secção` e usa os formulários configurados.
+4. “Trocar secção” limpa a sessão completa e regressa ao seletor inicial.
+5. “Terminar sessão” mantém a secção mas limpa credenciais e cache.
 
-1. Ao entrar, o utilizador escolhe a secção (guardada em `st.session_state`).
-2. O login valida o utilizador com a base Airtable correspondente.
-3. Páginas mostram o rótulo `Agrupamento · Secção` e usam formulários específicos.
-4. Botão “Trocar secção” limpa a sessão e regressa ao seletor inicial.
-5. “Terminar sessão” mantém a secção, mas limpa credenciais/cache.
-=======
-`
-
-Se alguma chave estiver em falta para a secção selecionada, o portal mostra uma mensagem de erro e não renderiza o formulário.
-
-### Comportamento
-- Trocar secção limpa a sessão e volta ao seletor inicial.
-- Terminar sessão limpa apenas as credenciais, mantendo a secção.
-- Cada página mostra o rótulo Agrupamento · Secção e usa sempre os links definidos nos secrets.
->>>>>>> master
+### Scripts de apoio
+- `update_header.py`: utilitário para actualizar cabeçalhos das páginas (usa ficheiros em `pages/`).

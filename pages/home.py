@@ -1352,24 +1352,60 @@ def dashboard_admin(dados: dict):
     st.divider()
 
     st.markdown("### ⚠️ Pedidos com pedidos de cancelamento")
+
+    def _serie_bool(df_like: pd.DataFrame, col: str) -> pd.Series:
+        if col not in df_like.columns:
+            return pd.Series(False, index=df_like.index)
+        serie = df_like[col]
+        if pd.api.types.is_bool_dtype(serie):
+            return serie.fillna(False)
+        return serie.fillna(False).astype(str).str.lower().eq("true")
+
+    def _preparar_df_pedidos(df_like: pd.DataFrame) -> pd.DataFrame:
+        df_display = df_like.copy()
+        if df_display.empty:
+            return df_display
+        if "Date" in df_display.columns:
+            df_display["Date"] = pd.to_datetime(df_display["Date"], errors="coerce").dt.strftime("%d/%m/%Y")
+        if "Escuteiros" in df_display.columns:
+            df_display["Escuteiros"] = df_display["Escuteiros"].apply(lambda v: mapear_lista(v, escuteiros_map))
+        for coluna in ["Lanche", "Bebida", "Fruta"]:
+            if coluna in df_display.columns:
+                df_display[coluna] = df_display[coluna].apply(lambda v: mapear_lista(v, recipes_map))
+        if "Senha_marcações" in df_display.columns:
+            df_display["Senha_marcações"] = df_display["Senha_marcações"].fillna("")
+        colunas_exibicao = [c for c in ["Date", "Escuteiros", "Lanche", "Bebida", "Fruta", "Senha_marcações"] if c in df_display.columns]
+        return df_display[colunas_exibicao]
+
     if df_pedidos.empty or "Pendente de Cancelamento" not in df_pedidos.columns:
         st.info("Nenhum pedido pendente.")
     else:
-        df_pend = df_pedidos[df_pedidos["Pendente de Cancelamento"].astype(str).str.lower().eq("true")].copy()
-        if df_pend.empty:
+        pendentes_mask = _serie_bool(df_pedidos, "Pendente de Cancelamento")
+        cancelados_mask = _serie_bool(df_pedidos, "Cancelado?")
+
+        df_pend = df_pedidos[pendentes_mask & (~cancelados_mask)].copy()
+        df_cancelados = df_pedidos[cancelados_mask].copy()
+        df_todos = df_pedidos.copy()
+
+        df_pend_display = _preparar_df_pedidos(df_pend)
+        if df_pend_display.empty:
             st.info("Nenhum pedido pendente.")
         else:
-            if "Date" in df_pend.columns:
-                df_pend["Date"] = pd.to_datetime(df_pend["Date"], errors="coerce").dt.strftime('%d/%m/%Y')
-            if "Escuteiros" in df_pend.columns:
-                df_pend["Escuteiros"] = df_pend["Escuteiros"].apply(lambda v: mapear_lista(v, escuteiros_map))
-            for coluna in ["Lanche", "Bebida", "Fruta"]:
-                if coluna in df_pend.columns:
-                    df_pend[coluna] = df_pend[coluna].apply(lambda v: mapear_lista(v, recipes_map))
-            if "Senha_marcações" in df_pend.columns:
-                df_pend["Senha_marcações"] = df_pend["Senha_marcações"].fillna("")
-            cols = [c for c in ["Date", "Escuteiros", "Lanche", "Bebida", "Fruta", "Senha_marcações", "Cancelado?", "Pendente de Cancelamento"] if c in df_pend.columns]
-            st.dataframe(df_pend[cols], use_container_width=True, hide_index=True)
+            st.dataframe(df_pend_display, use_container_width=True, hide_index=True)
+
+        st.markdown("#### ✅ Pedidos cancelados")
+        df_cancelados_display = _preparar_df_pedidos(df_cancelados)
+        if df_cancelados_display.empty:
+            st.info("Ainda não existem pedidos cancelados.")
+        else:
+            st.dataframe(df_cancelados_display, use_container_width=True, hide_index=True)
+
+        st.markdown("#### 📋 Todos os pedidos")
+        df_todos_display = _preparar_df_pedidos(df_todos)
+        if df_todos_display.empty:
+            st.info("Sem registos de pedidos.")
+        else:
+            st.dataframe(df_todos_display, use_container_width=True, hide_index=True)
 
     st.markdown("### 📅 Eventos sem voluntários")
     if df_calendario.empty:
@@ -1805,4 +1841,3 @@ for idx, sec in enumerate(sections_a_mostrar):
 
     if idx < len(sections_a_mostrar) - 1:
         st.divider()
-

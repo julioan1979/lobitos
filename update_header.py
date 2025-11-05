@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
 
-path = Path('lobitos/pages/4_\U0001F466_Escuteiros.py')
+path = Path('pages/4_\U0001F466_Escuteiros.py')
 lines = path.read_text(encoding='utf-8').splitlines()
 for i, line in enumerate(lines):
     if '###' in line and 'Formul' in line:
