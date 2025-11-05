@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ## Portal Multi-Secção
 
 Esta app Streamlit permite alternar entre diferentes secções/agrupamentos (ex.: Lobitos, Exploradores) partilhando a mesma interface.
@@ -8,18 +7,6 @@ Esta app Streamlit permite alternar entre diferentes secções/agrupamentos (ex.
 Cada combinação deve ter um bloco `airtable_<agrupamento>_<secao>`:
 
 ```toml
-=======
-﻿## Portal Lobitos – Multi-Secção
-
-### Escolha de secção
-- Ao abrir a app, o utilizador escolhe agrupamento/secção.
-- A escolha fica guardada na sessão e pode ser trocada mais tarde.
-
-### Configuração nos secrets
-Cada secção **tem de** definir um bloco irtable_<agrupamento>_<secao> com todas as chaves abaixo:
-
-`	oml
->>>>>>> master
 [airtable_521_lobitos]
 AIRTABLE_TOKEN = "..."
 AIRTABLE_BASE_ID = "..."
@@ -27,17 +14,13 @@ AGRUPAMENTO_LABEL = "Agrupamento 521"
 SECAO_LABEL = "Lobitos"
 DEFAULT_LANCHE_FORM_URL = "https://airtable.com/embed/..."
 DEFAULT_VOLUNT_FORM_URL = "https://airtable.com/embed/..."
-<<<<<<< HEAD
 # chaves opcionais:
-=======
->>>>>>> master
 CANCEL_LANCHE_FORM_URL = "https://airtable.com/embed/..."
 RECEBIMENTO_FORM_URL = "https://airtable.com/embed/..."
 ESTORNO_FORM_URL = "https://airtable.com/embed/..."
 FORCED_CANCEL_FORM_URL = "https://airtable.com/embed/..."
 FORCED_ORDER_FORM_URL = "https://airtable.com/embed/..."
 MANAGE_ESCUTEIROS_FORM_URL = "https://airtable.com/embed/..."
-<<<<<<< HEAD
 ```
 
 `context_extra("NOME", fallback)` devolve qualquer URL configurado (ou o _fallback_).
@@ -49,13 +32,3 @@ MANAGE_ESCUTEIROS_FORM_URL = "https://airtable.com/embed/..."
 3. Páginas mostram o rótulo `Agrupamento · Secção` e usam formulários específicos.
 4. Botão “Trocar secção” limpa a sessão e regressa ao seletor inicial.
 5. “Terminar sessão” mantém a secção, mas limpa credenciais/cache.
-=======
-`
-
-Se alguma chave estiver em falta para a secção selecionada, o portal mostra uma mensagem de erro e não renderiza o formulário.
-
-### Comportamento
-- Trocar secção limpa a sessão e volta ao seletor inicial.
-- Terminar sessão limpa apenas as credenciais, mantendo a secção.
-- Cada página mostra o rótulo Agrupamento · Secção e usa sempre os links definidos nos secrets.
->>>>>>> master
