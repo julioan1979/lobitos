@@ -135,6 +135,29 @@ def mostrar_barra_acoes(botoes: list[tuple[str, str]], espacador: int = 6) -> di
 
 
 
+REFRESH_BUTTON_LABEL = "🔄 Atualizar dados do Airtable"
+
+
+def atualizar_dados_cache() -> None:
+    st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
+    st.session_state["last_update"] = datetime.now()
+
+
+def render_refresh_button(key_suffix: str, *, show_timestamp: bool = False) -> None:
+    """Mostra o botão de atualização em múltiplos locais com feedback único."""
+    if st.button(REFRESH_BUTTON_LABEL, key=f"refresh_{key_suffix}"):
+        atualizar_dados_cache()
+        st.session_state["refresh_success_origin"] = key_suffix
+        st.experimental_rerun()
+
+    if st.session_state.get("refresh_success_origin") == key_suffix:
+        st.success("✅ Dados atualizados com sucesso!")
+        st.session_state.pop("refresh_success_origin", None)
+
+    if show_timestamp and "last_update" in st.session_state:
+        st.caption(f"🕒 Última atualização: {st.session_state['last_update'].strftime('%d/%m/%Y %H:%M:%S')}")
+
+
 def mapear_lista(valor, mapping):
     if isinstance(valor, list):
         return ", ".join(mapping.get(v, v) for v in valor)
@@ -435,17 +458,12 @@ def obter_form_url(extra_key: str, label: str) -> str:
 # 3) Cache e botão de refresh
 # ======================
 if "dados_cache" not in st.session_state:
-    st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
-    st.session_state["last_update"] = datetime.now()
+    atualizar_dados_cache()
 
-if st.button("🔄 Atualizar dados do Airtable"):
-    st.session_state["dados_cache"] = carregar_todas_as_tabelas(BASE_ID, role)
-    st.session_state["last_update"] = datetime.now()
-    st.success("✅ Dados atualizados com sucesso!")
+with st.sidebar:
+    render_refresh_button("sidebar")
 
-# Mostrar data/hora da última atualização
-if "last_update" in st.session_state:
-    st.caption(f"🕒 Última atualização: {st.session_state['last_update'].strftime('%d/%m/%Y %H:%M:%S')}")
+render_refresh_button("main", show_timestamp=True)
 
 dados = st.session_state["dados_cache"]
 
@@ -454,7 +472,11 @@ dados = st.session_state["dados_cache"]
 # ======================
 
 def dashboard_pais():
-    st.markdown("## 🏡 Bem-vindo, Família Escutista!")
+    col_titulo, col_refresh = st.columns([4, 1])
+    with col_titulo:
+        st.markdown("## 🏡 Bem-vindo, Família Escutista!")
+    with col_refresh:
+        render_refresh_button("pais")
     st.info("Aqui podem gerir lanches, voluntariado e acompanhar as atividades.")
 
     df_pedidos = dados.get("Pedidos", pd.DataFrame())
@@ -748,7 +770,11 @@ def dashboard_pais():
 
 
 def dashboard_tesoureiro(dados: dict):
-    st.markdown("## 💰 Dashboard Tesoureiro")
+    col_titulo, col_refresh = st.columns([4, 1])
+    with col_titulo:
+        st.markdown("## 💰 Dashboard Tesoureiro")
+    with col_refresh:
+        render_refresh_button("tesoureiro")
 
     # 🔘 Barra de Ações
     acoes_tesoureiro = mostrar_barra_acoes([
