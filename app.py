@@ -11,6 +11,7 @@ from airtable_config import (
     set_current_context,
 )
 from menu import _hide_streamlit_sidebar_nav
+from components.banner_convites import mostrar_convites
 
 st.set_page_config(page_title="Portal Lobitos - Login", page_icon="\U0001F43E", layout="centered")
 _hide_streamlit_sidebar_nav()
@@ -120,6 +121,7 @@ st.write("Bem-vindo! Faça login para continuar.")
 st.caption("Pedidos, calendários e voluntariado reunidos num só painel.")
 
 st.info(secao_legenda)
+mostrar_convites("login")
 
 email_input = st.text_input("Email", value=st.session_state.get("login_email", ""))
 senha_input = st.text_input("Senha", type="password")
