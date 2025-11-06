@@ -2,20 +2,24 @@
 
 Para activar um convite:
 1. Adicione ou actualize entradas em ``CONVITES`` com as datas, link e posições desejadas.
-2. Use ``mostrar_convites("login")`` ou ``mostrar_convites("sidebar")`` para renderizar.
+2. Use ``mostrar_convites("login")`` ou ``mostrar_convites("principal")`` para renderizar.
 3. Quando a campanha terminar, ajuste ``ativo_ate`` ou remova a configuração.
 """
 
 from __future__ import annotations
 
+import base64
+import mimetypes
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Iterable, Tuple
 
 import streamlit as st
 
 
 _CSS_SESSION_KEY = "_convite_banner_css_injected"
+_BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def _inject_css() -> None:
@@ -203,10 +207,64 @@ def _inject_css() -> None:
                     width: 100%;
                 }
             }
+
+            .convite-card.convite-banner-only {
+                padding: 0;
+                border: none;
+                background: none;
+                box-shadow: none;
+                max-width: 720px;
+            }
+
+            .convite-card.convite-banner-only .convite-banner-link {
+                display: block;
+                border-radius: 24px;
+                overflow: hidden;
+                box-shadow: 0 20px 40px rgba(6, 9, 24, 0.4);
+                transition: transform 0.25s ease, box-shadow 0.25s ease;
+            }
+
+            .convite-card.convite-banner-only .convite-banner-link:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 28px 52px rgba(6, 9, 24, 0.55);
+            }
+
+            .convite-card.convite-banner-only img {
+                display: block;
+                width: 100%;
+                height: auto;
+            }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+def _resolver_imagem_src(caminho: str | None) -> str | None:
+    if not caminho:
+        return None
+    caminho = caminho.strip()
+    if caminho.startswith(("http://", "https://", "data:")):
+        return caminho
+
+    caminho_path = Path(caminho)
+    if not caminho_path.is_absolute():
+        caminho_path = (_BASE_DIR / caminho_path).resolve()
+
+    if not caminho_path.exists():
+        return None
+
+    mime, _ = mimetypes.guess_type(str(caminho_path))
+    if not mime:
+        mime = "image/png"
+
+    try:
+        dados = caminho_path.read_bytes()
+    except OSError:
+        return None
+
+    encoded = base64.b64encode(dados).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
 
 
 @dataclass(frozen=True)
@@ -241,7 +299,7 @@ CONVITES: Tuple[ConviteConfig, ...] = (
         descricao="Garanta a sua presença na festa do magusto: escolha o menu preferido e inscreva-se já.",
         link="https://forms.fillout.com/t/3myp9UYEgZus",
         posicoes=("login", "principal"),
-        imagem_url=None,  # Substitua por um caminho local ou URL público quando disponível.
+        imagem_url="static/planeta-magusto-banner.svg",
         ativo_desde=None,  # Ajuste estas datas quando quiser controlar a campanha.
         ativo_ate=None,
         background="#142146",
@@ -266,11 +324,25 @@ def _renderizar_convite(convite: ConviteConfig, *, destino_sidebar: bool) -> Non
     if destino_sidebar:
         card_classes += " convite-sidebar"
 
+    imagem_src = _resolver_imagem_src(convite.imagem_url)
+    destino = st.sidebar if destino_sidebar else st
+
+    if imagem_src and not destino_sidebar:
+        html = (
+            f'<div class="{card_classes} convite-banner-only">'
+            f'<a class="convite-banner-link" href="{convite.link}" target="_blank" rel="noopener noreferrer">'
+            f'<img src="{imagem_src}" alt="{convite.titulo}">'
+            "</a>"
+            "</div>"
+        )
+        destino.markdown(html, unsafe_allow_html=True)
+        return
+
     imagem_html = ""
-    if convite.imagem_url:
+    if imagem_src:
         imagem_html = (
             '<div class="convite-imagem">'
-            f'<img src="{convite.imagem_url}" alt="{convite.titulo}">'
+            f'<img src="{imagem_src}" alt="{convite.titulo}">'
             "</div>"
         )
 
@@ -292,7 +364,6 @@ def _renderizar_convite(convite: ConviteConfig, *, destino_sidebar: bool) -> Non
         "</div>"
     )
 
-    destino = st.sidebar if destino_sidebar else st
     destino.markdown(html, unsafe_allow_html=True)
 
 
