@@ -1,9 +1,9 @@
 """Componentes reutilizáveis para banners de convites.
 
-Para activar um convite:
-1. Adicione ou actualize entradas em ``CONVITES`` com as datas, link e posições desejadas.
+Configuração:
+1. Defina convites em ``config/banners.toml`` ou em ``st.secrets["convites_banner"]``.
 2. Use ``mostrar_convites("login")`` ou ``mostrar_convites("principal")`` para renderizar.
-3. Quando a campanha terminar, ajuste ``ativo_ate`` ou remova a configuração.
+3. Para activar/desactivar campanhas altere ``active_keys`` ou o campo ``active``.
 """
 
 from __future__ import annotations
@@ -13,13 +13,22 @@ import mimetypes
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 import streamlit as st
+
+try:  # Python 3.11+
+    import tomllib  # type: ignore[attr-defined]
+except ModuleNotFoundError:  # pragma: no cover - fallback for Python <3.11
+    tomllib = None  # type: ignore[assignment]
+    import toml  # type: ignore
+else:  # pragma: no cover - keep linters happy
+    toml = None  # type: ignore[assignment]
 
 
 _CSS_SESSION_KEY = "_convite_banner_css_injected"
 _BASE_DIR = Path(__file__).resolve().parent.parent
+_CONFIG_PATH = _BASE_DIR / "config" / "banners.toml"
 
 
 def _inject_css() -> None:
@@ -267,6 +276,148 @@ def _resolver_imagem_src(caminho: str | None) -> str | None:
     return f"data:{mime};base64,{encoded}"
 
 
+def _parse_toml(texto: str) -> Dict[str, Any]:
+    if tomllib is not None:  # type: ignore[attr-defined]
+        return tomllib.loads(texto)  # type: ignore[union-attr]
+    if toml is not None:
+        return toml.loads(texto)
+    return {}
+
+
+def _load_config_file() -> Dict[str, Any]:
+    if not _CONFIG_PATH.exists():
+        return {}
+    try:
+        texto = _CONFIG_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    return _parse_toml(texto)
+
+
+def _get_secrets_config() -> Dict[str, Any]:
+    dados = st.secrets.get("convites_banner")
+    return dict(dados) if isinstance(dados, dict) else {}
+
+
+def _merge_configs() -> Dict[str, Any]:
+    arquivo = _load_config_file()
+    secretos = _get_secrets_config()
+
+    temas: Dict[str, Dict[str, Any]] = {}
+    for origem in (arquivo.get("themes"), secretos.get("themes")):
+        if isinstance(origem, dict):
+            temas.update(
+                {str(nome): dict(valor) for nome, valor in origem.items() if isinstance(valor, dict)}
+            )
+
+    convites_por_chave: Dict[str, Dict[str, Any]] = {}
+    for origem in (arquivo.get("convites"), secretos.get("convites")):
+        if isinstance(origem, list):
+            for entrada in origem:
+                if isinstance(entrada, dict) and entrada.get("key"):
+                    convites_por_chave[str(entrada["key"])] = dict(entrada)
+
+    active_keys: List[str] = []
+    for origem in (secretos.get("active_keys"), arquivo.get("active_keys")):
+        if origem:
+            if isinstance(origem, (list, tuple)):
+                active_keys = [str(chave) for chave in origem]
+            elif isinstance(origem, str):
+                active_keys = [origem]
+            if active_keys:
+                break
+
+    if not active_keys:
+        active_keys = [
+            chave for chave, entrada in convites_por_chave.items() if entrada.get("active", True)
+        ]
+
+    convites_ordenados: List[Dict[str, Any]] = []
+    for chave in active_keys:
+        entrada = convites_por_chave.get(chave)
+        if entrada:
+            convites_ordenados.append(entrada)
+
+    for chave, entrada in convites_por_chave.items():
+        if chave in active_keys:
+            continue
+        if entrada.get("active", False):
+            convites_ordenados.append(entrada)
+
+    return {"themes": temas, "convites": convites_ordenados}
+
+
+def _parse_data(valor: Any) -> date | None:
+    if not valor:
+        return None
+    if isinstance(valor, date):
+        return valor
+    if isinstance(valor, str):
+        try:
+            return date.fromisoformat(valor.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _converter_convite(entry: Dict[str, Any], temas: Dict[str, Dict[str, Any]]) -> ConviteConfig:
+    tema_ref = entry.get("theme")
+    tema = temas.get(tema_ref, {}) if isinstance(tema_ref, str) else {}
+
+    background = (
+        entry.get("background")
+        or entry.get("bg")
+        or tema.get("background")
+        or tema.get("bg")
+        or "#162447"
+    )
+    accent = entry.get("accent") or entry.get("accent_color") or tema.get("accent") or "#F6C65B"
+    texto = entry.get("text") or entry.get("texto") or tema.get("text") or tema.get("texto") or "#FFFFFF"
+
+    imagem_url = entry.get("image_url") or entry.get("image") or entry.get("banner")
+
+    posicoes = entry.get("positions") or entry.get("posicoes") or ["principal"]
+    if isinstance(posicoes, str):
+        posicoes = [posicoes]
+    posicoes_tuple = tuple(str(pos).strip() for pos in posicoes if pos)
+    if not posicoes_tuple:
+        posicoes_tuple = ("principal",)
+
+    titulo = entry.get("title") or entry.get("titulo") or entry.get("key")
+    descricao = entry.get("description") or entry.get("descricao") or ""
+    data_local = entry.get("data_local") or entry.get("subtitle") or ""
+    link = entry.get("link") or entry.get("url") or "#"
+
+    return ConviteConfig(
+        chave=str(entry["key"]),
+        titulo=str(titulo),
+        data_local=str(data_local),
+        descricao=str(descricao),
+        link=str(link),
+        posicoes=posicoes_tuple,
+        imagem_url=imagem_url,
+        ativo_desde=_parse_data(entry.get("ativo_desde") or entry.get("start_date")),
+        ativo_ate=_parse_data(entry.get("ativo_ate") or entry.get("end_date")),
+        background=str(background),
+        accent=str(accent),
+        texto=str(texto),
+    )
+
+
+def _convites_configurados() -> Tuple[ConviteConfig, ...]:
+    bruto = _merge_configs()
+    temas = bruto.get("themes", {})
+    convites = []
+    for entrada in bruto.get("convites", []):
+        if not isinstance(entrada, dict) or "key" not in entrada:
+            continue
+        try:
+            convites.append(_converter_convite(entrada, temas))
+        except Exception:
+            continue
+    return tuple(convites)
+
+
 @dataclass(frozen=True)
 class ConviteConfig:
     chave: str
@@ -291,25 +442,8 @@ class ConviteConfig:
         return True
 
 
-CONVITES: Tuple[ConviteConfig, ...] = (
-    ConviteConfig(
-        chave="planeta-magusto",
-        titulo="O Planeta do Magusto",
-        data_local="15 de Novembro · 19h30 · Escola Secundária da Senhora da Hora (Amarela)",
-        descricao="Garanta a sua presença na festa do magusto: escolha o menu preferido e inscreva-se já.",
-        link="https://forms.fillout.com/t/3myp9UYEgZus",
-        posicoes=("login", "principal"),
-        imagem_url="static/planeta-magusto-banner.svg",
-        ativo_desde=None,  # Ajuste estas datas quando quiser controlar a campanha.
-        ativo_ate=None,
-        background="#142146",
-        accent="#F6C65B",
-    ),
-)
-
-
 def _iterar_convites_ativos(posicao: str) -> Iterable[ConviteConfig]:
-    for convite in CONVITES:
+    for convite in _convites_configurados():
         if posicao not in convite.posicoes:
             continue
         if not convite.esta_ativo():

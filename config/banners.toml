@@ -1,0 +1,19 @@
+# Configuração base dos convites/banner.
+# Para activar novos convites, adicione entradas em [[convites]] e actualize "active_keys".
+
+active_keys = ["planeta-magusto"]
+
+[[convites]]
+key = "planeta-magusto"
+title = "O Planeta do Magusto"
+data_local = "15 de Novembro · 19h30 · Escola Secundária da Senhora da Hora (Amarela)"
+description = "Garanta a sua presença na festa do magusto: escolha o menu preferido e inscreva-se já."
+link = "https://forms.fillout.com/t/3myp9UYEgZus"
+positions = ["login", "principal"]
+image = "static/planeta-magusto-banner.svg"
+theme = "space"
+
+[themes.space]
+background = "#142146"
+accent = "#F6C65B"
+text = "#FFFFFF"
