@@ -8,6 +8,7 @@ Para activar um convite:
 
 from __future__ import annotations
 
+import textwrap
 from dataclasses import dataclass
 from datetime import date
 from typing import Iterable, Tuple
@@ -191,13 +192,16 @@ def _renderizar_convite(convite: ConviteConfig, *, destino_sidebar: bool) -> Non
 
     imagem_html = ""
     if convite.imagem_url:
-        imagem_html = f"""
+        imagem_html = textwrap.dedent(
+            f"""
             <div class="convite-imagem">
                 <img src="{convite.imagem_url}" alt="{convite.titulo}">
             </div>
-        """
+            """
+        ).strip()
 
-    html = f"""
+    html = textwrap.dedent(
+        f"""
         <div class="{card_classes}"
              style="background:{convite.background};color:{convite.texto};border-left:6px solid {convite.accent};">
             <div class="convite-layout">
@@ -212,7 +216,8 @@ def _renderizar_convite(convite: ConviteConfig, *, destino_sidebar: bool) -> Non
                 </div>
             </div>
         </div>
-    """
+        """
+    ).strip()
 
     destino = st.sidebar if destino_sidebar else st
     destino.markdown(html, unsafe_allow_html=True)
