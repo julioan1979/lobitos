@@ -26,76 +26,142 @@ def _inject_css() -> None:
     st.markdown(
         """
         <style>
-            .convite-card {
-                border-radius: 16px;
-                padding: 1.1rem 1.4rem;
-                margin: 1rem 0;
-                color: #ffffff;
-                position: relative;
-                overflow: hidden;
-                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Poppins:wght@400;600;700&display=swap');
+
+            :root {
+                --convite-font-title: 'Inter', 'Poppins', sans-serif;
+                --convite-font-body: 'Inter', 'Poppins', sans-serif;
+                --convite-bg-start: #1d275a;
+                --convite-bg-end: #162447;
+                --convite-shadow: 0 16px 40px rgba(6, 9, 24, 0.45);
+                --convite-text-strong: rgba(255, 255, 255, 0.96);
+                --convite-text-body: rgba(255, 255, 255, 0.88);
+                --convite-cta-bg: #FFC857;
+                --convite-cta-bg-hover: #ffd673;
+                --convite-cta-text: #1b1f35;
             }
 
-            .convite-card::after {
+            .convite-card {
+                position: relative;
+                border-radius: 20px;
+                padding: 1.8rem;
+                margin: 1.4rem 0;
+                background: linear-gradient(145deg, var(--convite-bg-start), var(--convite-bg-end));
+                box-shadow: var(--convite-shadow);
+                overflow: hidden;
+                font-family: var(--convite-font-body);
+                color: var(--convite-text-body);
+                border: 1px solid rgba(255, 255, 255, 0.04);
+                backdrop-filter: blur(8px);
+                transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+            }
+
+            .convite-card:not(.convite-sidebar) {
+                max-width: 600px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            .convite-card:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 24px 46px rgba(6, 9, 24, 0.6);
+                border-color: rgba(255, 255, 255, 0.1);
+            }
+
+            .convite-card::before {
                 content: "";
                 position: absolute;
                 inset: 0;
-                background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.14), transparent 60%);
+                background: radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.15), transparent 60%);
                 pointer-events: none;
-            }
-
-            .convite-card .convite-header {
-                font-size: 1.2rem;
-                font-weight: 700;
-                margin-bottom: 0.4rem;
-            }
-
-            .convite-card .convite-meta {
-                font-size: 0.95rem;
-                opacity: 0.92;
-                margin-bottom: 0.75rem;
-            }
-
-            .convite-card .convite-descricao {
-                font-size: 0.95rem;
-                line-height: 1.45;
-                margin-bottom: 1rem;
-            }
-
-            .convite-card .convite-cta {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                gap: 0.4rem;
-                padding: 0.55rem 1.1rem;
-                border-radius: 999px;
-                font-weight: 600;
-                text-decoration: none;
-                transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-            }
-
-            .convite-card .convite-cta:hover {
-                transform: translateY(-1px);
-                text-decoration: none;
-                box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
             }
 
             .convite-card .convite-layout {
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: 1.5rem;
+                position: relative;
+                z-index: 1;
             }
 
             .convite-card .convite-imagem {
-                border-radius: 12px;
+                border-radius: 16px;
                 overflow: hidden;
-                max-height: 200px;
+                width: 100%;
+                max-height: 220px;
+                box-shadow: 0 12px 28px rgba(6, 9, 24, 0.45);
             }
 
             .convite-card .convite-imagem img {
                 width: 100%;
                 height: 100%;
                 object-fit: cover;
+            }
+
+            .convite-card .convite-conteudo {
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+
+            .convite-card .convite-header {
+                font-family: var(--convite-font-title);
+                font-weight: 700;
+                font-size: 1.35rem;
+                letter-spacing: 0.01em;
+                color: var(--convite-text-strong);
+            }
+
+            .convite-card .convite-meta {
+                font-size: 0.95rem;
+                font-weight: 500;
+                color: rgba(255, 255, 255, 0.72);
+            }
+
+            .convite-card .convite-descricao {
+                font-size: 1rem;
+                font-weight: 400;
+                line-height: 1.6;
+                color: var(--convite-text-body);
+            }
+
+            .convite-card .convite-cta {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.5rem;
+                padding: 0.65rem 1.4rem;
+                border-radius: 999px;
+                background: var(--convite-cta-bg);
+                color: var(--convite-cta-text);
+                font-family: var(--convite-font-title);
+                font-weight: 600;
+                text-decoration: none !important;
+                letter-spacing: 0.01em;
+                transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+            }
+
+            .convite-card .convite-cta span:first-child {
+                font-size: 1.1rem;
+            }
+
+            .convite-card .convite-cta:hover {
+                background: var(--convite-cta-bg-hover);
+                transform: translateY(-2px);
+                box-shadow: 0 14px 26px rgba(255, 200, 87, 0.35);
+            }
+
+            .convite-card.convite-sidebar {
+                padding: 1.2rem 1.3rem;
+                margin-top: 1.1rem;
+            }
+
+            .convite-card.convite-sidebar .convite-layout {
+                gap: 1.1rem;
+            }
+
+            .convite-card.convite-sidebar .convite-imagem {
+                max-height: 180px;
             }
 
             @media (min-width: 768px) {
@@ -105,26 +171,37 @@ def _inject_css() -> None:
                 }
 
                 .convite-card .convite-imagem {
-                    width: 42%;
-                    max-height: 220px;
+                    width: 38%;
+                    max-height: 240px;
                 }
 
                 .convite-card .convite-conteudo {
-                    width: 58%;
+                    width: 62%;
+                }
+
+                .convite-card.convite-sidebar .convite-layout {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+
+                .convite-card.convite-sidebar .convite-imagem,
+                .convite-card.convite-sidebar .convite-conteudo {
+                    width: 100%;
                 }
             }
 
-            .convite-card.convite-sidebar {
-                padding: 0.9rem 1rem;
-                margin-top: 0.8rem;
-            }
+            @media (max-width: 480px) {
+                .convite-card {
+                    padding: 1.4rem;
+                }
 
-            .convite-card.convite-sidebar .convite-layout {
-                flex-direction: column;
-            }
+                .convite-card .convite-header {
+                    font-size: 1.2rem;
+                }
 
-            .convite-card.convite-sidebar .convite-imagem {
-                max-height: 160px;
+                .convite-card .convite-cta {
+                    width: 100%;
+                }
             }
         </style>
         """,
