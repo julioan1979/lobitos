@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
 from airtable_config import context_labels, current_context, get_airtable_credentials, resolve_form_url
+from components.banner_convites import mostrar_convites
 
 import locale
 
@@ -59,6 +60,7 @@ DEFAULT_LANCHE_FORM_URL = resolve_form_url("DEFAULT_LANCHE_FORM_URL", "Formulár
 secao_legenda = context_labels()
 if secao_legenda:
     st.caption(secao_legenda)
+mostrar_convites("principal")
 AIRTABLE_TOKEN, BASE_ID = get_airtable_credentials()
 api = Api(AIRTABLE_TOKEN)
 

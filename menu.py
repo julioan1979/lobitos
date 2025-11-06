@@ -1,6 +1,5 @@
 ﻿import streamlit as st
 from airtable_config import clear_authentication, context_labels, current_context, reset_context
-from components.banner_convites import mostrar_convites
 
 PAGE_PATHS = {
     "home": "pages/home.py",
@@ -31,7 +30,6 @@ def authenticated_menu() -> None:
     _hide_streamlit_sidebar_nav()
 
     st.sidebar.header("Navegação")
-    mostrar_convites("sidebar")
     secao_info = context_labels()
     if secao_info:
         st.sidebar.caption(secao_info)
@@ -55,7 +53,6 @@ def authenticated_menu() -> None:
 def unauthenticated_menu() -> None:
     _hide_streamlit_sidebar_nav()
     st.sidebar.header("Acesso")
-    mostrar_convites("sidebar")
     st.sidebar.page_link("app.py", label="🔑 Login")
 
 
