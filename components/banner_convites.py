@@ -165,8 +165,8 @@ CONVITES: Tuple[ConviteConfig, ...] = (
         link="https://forms.fillout.com/t/3myp9UYEgZus",
         posicoes=("login", "sidebar"),
         imagem_url=None,  # Substitua por um caminho local ou URL público quando disponível.
-        ativo_desde=date(2024, 10, 1),
-        ativo_ate=date(2024, 11, 16),
+        ativo_desde=None,  # Ajuste estas datas quando quiser controlar a campanha.
+        ativo_ate=None,
         background="#142146",
         accent="#F6C65B",
     ),
