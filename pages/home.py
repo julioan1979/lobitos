@@ -145,14 +145,16 @@ def atualizar_dados_cache() -> None:
 
 def render_refresh_button(key_suffix: str, *, show_timestamp: bool = False) -> None:
     """Mostra o botão de atualização em múltiplos locais com feedback único."""
-    if st.button(REFRESH_BUTTON_LABEL, key=f"refresh_{key_suffix}"):
-        atualizar_dados_cache()
-        st.session_state["refresh_success_origin"] = key_suffix
-        st.experimental_rerun()
+    button_key = f"refresh_{key_suffix}"
+    success_flag = f"refresh_success_{key_suffix}"
 
-    if st.session_state.get("refresh_success_origin") == key_suffix:
+    if st.button(REFRESH_BUTTON_LABEL, key=button_key):
+        atualizar_dados_cache()
+        st.session_state[success_flag] = datetime.now()
+
+    if st.session_state.get(success_flag):
         st.success("✅ Dados atualizados com sucesso!")
-        st.session_state.pop("refresh_success_origin", None)
+        st.session_state.pop(success_flag, None)
 
     if show_timestamp and "last_update" in st.session_state:
         st.caption(f"🕒 Última atualização: {st.session_state['last_update'].strftime('%d/%m/%Y %H:%M:%S')}")
