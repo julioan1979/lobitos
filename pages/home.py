@@ -1295,9 +1295,17 @@ def dashboard_admin(dados: dict):
 
     col1, col2, col3, col4 = st.columns(4)
 
+    def _ensure_checkbox(df_like: pd.DataFrame, coluna: str) -> pd.Series:
+        if coluna not in df_like.columns:
+            return pd.Series(False, index=df_like.index, dtype=bool)
+        serie = df_like[coluna]
+        if pd.api.types.is_bool_dtype(serie):
+            return serie.fillna(False)
+        return serie.fillna(False).astype(str).str.lower().eq("true")
+
     pendentes_cancel = 0
-    if not df_pedidos.empty and "Pendente de Cancelamento" in df_pedidos.columns:
-        pendentes_cancel = df_pedidos["Pendente de Cancelamento"].astype(str).str.lower().eq("true").sum()
+    if not df_pedidos.empty:
+        pendentes_cancel = int(_ensure_checkbox(df_pedidos, "Pendente de Cancelamento").sum())
     with col1:
         st.metric("Cancelamentos pendentes", int(pendentes_cancel))
 
@@ -1353,14 +1361,6 @@ def dashboard_admin(dados: dict):
 
     st.markdown("### ⚠️ Pedidos com pedidos de cancelamento")
 
-    def _serie_bool(df_like: pd.DataFrame, col: str) -> pd.Series:
-        if col not in df_like.columns:
-            return pd.Series(False, index=df_like.index)
-        serie = df_like[col]
-        if pd.api.types.is_bool_dtype(serie):
-            return serie.fillna(False)
-        return serie.fillna(False).astype(str).str.lower().eq("true")
-
     def _preparar_df_pedidos(df_like: pd.DataFrame) -> pd.DataFrame:
         df_display = df_like.copy()
         if df_display.empty:
@@ -1377,11 +1377,11 @@ def dashboard_admin(dados: dict):
         colunas_exibicao = [c for c in ["Date", "Escuteiros", "Lanche", "Bebida", "Fruta", "Senha_marcações"] if c in df_display.columns]
         return df_display[colunas_exibicao]
 
-    if df_pedidos.empty or "Pendente de Cancelamento" not in df_pedidos.columns:
+    if df_pedidos.empty:
         st.info("Nenhum pedido pendente.")
     else:
-        pendentes_mask = _serie_bool(df_pedidos, "Pendente de Cancelamento")
-        cancelados_mask = _serie_bool(df_pedidos, "Cancelado?")
+        pendentes_mask = _ensure_checkbox(df_pedidos, "Pendente de Cancelamento")
+        cancelados_mask = _ensure_checkbox(df_pedidos, "Cancelado?")
 
         df_pend = df_pedidos[pendentes_mask & (~cancelados_mask)].copy()
         df_cancelados = df_pedidos[cancelados_mask].copy()
