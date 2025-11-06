@@ -8,7 +8,6 @@ Para activar um convite:
 
 from __future__ import annotations
 
-import textwrap
 from dataclasses import dataclass
 from datetime import date
 from typing import Iterable, Tuple
@@ -192,32 +191,29 @@ def _renderizar_convite(convite: ConviteConfig, *, destino_sidebar: bool) -> Non
 
     imagem_html = ""
     if convite.imagem_url:
-        imagem_html = textwrap.dedent(
-            f"""
-            <div class="convite-imagem">
-                <img src="{convite.imagem_url}" alt="{convite.titulo}">
-            </div>
-            """
-        ).strip()
+        imagem_html = (
+            '<div class="convite-imagem">'
+            f'<img src="{convite.imagem_url}" alt="{convite.titulo}">'
+            "</div>"
+        )
 
-    html = textwrap.dedent(
-        f"""
-        <div class="{card_classes}"
-             style="background:{convite.background};color:{convite.texto};border-left:6px solid {convite.accent};">
-            <div class="convite-layout">
-                {imagem_html}
-                <div class="convite-conteudo">
-                    <div class="convite-header">{convite.titulo}</div>
-                    <div class="convite-meta">{convite.data_local}</div>
-                    <div class="convite-descricao">{convite.descricao}</div>
-                    <a class="convite-cta" href="{convite.link}" target="_blank" style="background:{convite.accent};color:{convite.background};">
-                        <span>🎟️</span><span>Inscreve-te já</span>
-                    </a>
-                </div>
-            </div>
-        </div>
-        """
-    ).strip()
+    html = (
+        f'<div class="{card_classes}" '
+        f'style="background:{convite.background};color:{convite.texto};border-left:6px solid {convite.accent};">'
+        '<div class="convite-layout">'
+        f"{imagem_html}"
+        '<div class="convite-conteudo">'
+        f'<div class="convite-header">{convite.titulo}</div>'
+        f'<div class="convite-meta">{convite.data_local}</div>'
+        f'<div class="convite-descricao">{convite.descricao}</div>'
+        f'<a class="convite-cta" href="{convite.link}" target="_blank" '
+        f'style="background:{convite.accent};color:{convite.background};">'
+        "<span>🎟️</span><span>Inscreve-te já</span>"
+        "</a>"
+        "</div>"
+        "</div>"
+        "</div>"
+    )
 
     destino = st.sidebar if destino_sidebar else st
     destino.markdown(html, unsafe_allow_html=True)
