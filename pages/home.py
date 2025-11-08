@@ -83,6 +83,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Estorno de Recebimento",
             "Permissoes",
             "Publicar Menu do Scouts",
+            "Quotas",
         ],
         "admin": [
             "Pedidos",
@@ -94,11 +95,12 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Estorno de Recebimento",
             "Permissoes",
             "Publicar Menu do Scouts",
+            "Quotas",
         ],
     }
 
     lista_tabelas = tabelas_por_role.get(role, [])
-    tabelas_opcionais = set()
+    tabelas_opcionais = {"Quotas"}
 
     for nome in lista_tabelas:
         try:
@@ -1290,6 +1292,7 @@ def dashboard_admin(dados: dict):
     df_receb = dados.get("Recebimento", pd.DataFrame())
     df_esc = dados.get("Escuteiros", pd.DataFrame())
     df_recipes = dados.get("Recipes", pd.DataFrame())
+    df_quotas = dados.get("Quotas", pd.DataFrame())
 
     hoje = pd.Timestamp.today().normalize()
 
@@ -1345,8 +1348,100 @@ def dashboard_admin(dados: dict):
                 return col_name
         return None
 
-    aba_resumo, aba_formularios, aba_pedidos, aba_eventos = st.tabs(
-        ["📊 Resumo", "📝 Formulários", "📦 Pedidos", "📅 Eventos"]
+    def _preparar_df_quotas(df_like: pd.DataFrame) -> pd.DataFrame:
+        base_columns = ["Data da cobrança", "Escuteiro", "Valor", "__tipo", "__data"]
+        if df_like is None or df_like.empty:
+            return pd.DataFrame(columns=base_columns)
+
+        df_display = df_like.copy()
+
+        tipo_col = _first_existing_col(
+            df_display,
+            [
+                "Tipo",
+                "Tipo de Quota",
+                "Tipo da Quota",
+                "Tipo de Cota",
+                "Categoria",
+                "Tipo de Pagamento",
+            ],
+        )
+
+        def _extrair_tipo(valor) -> str:
+            if isinstance(valor, list):
+                valor = valor[0] if valor else ""
+            texto = str(valor or "").strip().lower()
+            if "mens" in texto:
+                return "mensal"
+            if "anu" in texto:
+                return "anual"
+            return ""
+
+        if tipo_col:
+            df_display["__tipo"] = df_display[tipo_col].apply(_extrair_tipo)
+        else:
+            df_display["__tipo"] = ""
+
+        data_col = _first_existing_col(
+            df_display,
+            [
+                "Data da Cobrança",
+                "Data da cobrança",
+                "Data cobrança",
+                "Data de Cobrança",
+                "Data de cobrança",
+                "Data",
+            ],
+        )
+        if data_col:
+            df_display["__data"] = pd.to_datetime(df_display[data_col], errors="coerce")
+            df_display["Data da cobrança"] = df_display["__data"].dt.strftime("%d/%m/%Y")
+        else:
+            df_display["__data"] = pd.to_datetime(df_display.get("Data da cobrança"), errors="coerce")
+            if "Data da cobrança" in df_display.columns:
+                df_display["Data da cobrança"] = df_display["Data da cobrança"].fillna("").astype(str)
+            else:
+                df_display["Data da cobrança"] = ""
+
+        esc_col = _first_existing_col(
+            df_display,
+            [
+                "Escuteiro",
+                "Escuteiros",
+                "Nome do Escuteiro",
+                "Nome do Escuteiro (from Escuteiros)",
+                "Responsável",
+            ],
+        )
+        if esc_col:
+            df_display["Escuteiro"] = df_display[esc_col].apply(lambda v: mapear_lista(v, escuteiros_map))
+        else:
+            df_display["Escuteiro"] = df_display.get("Escuteiro", "").fillna("").astype(str)
+
+        valor_col = _first_existing_col(
+            df_display,
+            [
+                "Valor",
+                "Valor (€)",
+                "Valor da Quota",
+                "Valor da quota",
+                "Valor de Cobrança",
+                "Valor Recebido",
+            ],
+        )
+        if valor_col:
+            df_display["Valor"] = pd.to_numeric(df_display[valor_col], errors="coerce")
+        else:
+            df_display["Valor"] = pd.Series(dtype="float64", index=df_display.index)
+
+        resultado = df_display[
+            ["Data da cobrança", "Escuteiro", "Valor", "__tipo", "__data"]
+        ].copy()
+        resultado["__tipo"] = resultado["__tipo"].fillna("")
+        return resultado
+
+    aba_resumo, aba_formularios, aba_pedidos, aba_quotas, aba_eventos = st.tabs(
+        ["📊 Resumo", "📝 Formulários", "📦 Pedidos", "💶 Quotas", "📅 Eventos"]
     )
 
     with aba_formularios:
@@ -1554,6 +1649,120 @@ def dashboard_admin(dados: dict):
                     st.info("Sem registos de pedidos.")
                 else:
                     st.dataframe(df_todos_display, use_container_width=True, hide_index=True)
+
+    with aba_quotas:
+        st.markdown("### 💶 Quotas")
+        df_quotas_preparado = _preparar_df_quotas(df_quotas)
+
+        if df_quotas_preparado.empty:
+            if df_quotas is None or df_quotas.empty:
+                st.info("ℹ️ Ainda não existem quotas registadas.")
+            else:
+                st.warning(
+                    "⚠️ Não foi possível identificar o tipo (Mensal/Anual) dos registos atuais. "
+                    "Verifique se o campo 'Tipo de Quota' está preenchido no Airtable."
+                )
+        else:
+            def _nomes_validos(valor) -> list[str]:
+                if pd.isna(valor):
+                    return []
+                nomes_validos = []
+                for item in str(valor).split(","):
+                    limpo = item.strip()
+                    if limpo and limpo.lower() != "nan":
+                        nomes_validos.append(limpo)
+                return nomes_validos
+
+            nomes_opcoes = sorted(
+                {
+                    nome
+                    for nomes in df_quotas_preparado["Escuteiro"]
+                    for nome in _nomes_validos(nomes)
+                }
+            )
+            filtro_col, _ = st.columns([3, 1])
+            with filtro_col:
+                selecionados = st.multiselect(
+                    "Filtrar por escuteiro",
+                    options=nomes_opcoes,
+                    key="admin_quotas_filter",
+                    help="Selecione um ou mais escuteiros para limitar as tabelas abaixo.",
+                )
+
+            df_filtrado = df_quotas_preparado.copy()
+            if selecionados:
+                selecionados_normalizados = {nome.strip() for nome in selecionados}
+                df_filtrado = df_filtrado[
+                    df_filtrado["Escuteiro"].apply(
+                        lambda nomes: any(
+                            nome in selecionados_normalizados
+                            for nome in _nomes_validos(nomes)
+                        )
+                    )
+                ]
+
+            sem_tipo = df_filtrado[df_filtrado["__tipo"] == ""]
+            if not sem_tipo.empty:
+                st.warning(
+                    "⚠️ Existem quotas sem o tipo definido. "
+                    "Complete com 'Quota Mensal' ou 'Quota Anual' para que apareçam nas tabelas."
+                )
+
+            df_filtrado = df_filtrado[df_filtrado["__tipo"].isin({"mensal", "anual"})]
+
+            def _formatar_para_exibicao(df_input: pd.DataFrame) -> pd.DataFrame:
+                if df_input.empty:
+                    return df_input
+                df_temp = df_input.sort_values(
+                    by=["__data", "Data da cobrança"],
+                    ascending=[False, False],
+                    na_position="last",
+                ).copy()
+                df_temp.drop(columns=["__tipo", "__data"], inplace=True, errors="ignore")
+                df_temp["Data da cobrança"] = df_temp["Data da cobrança"].fillna("")
+                return df_temp
+
+            df_mensal_exibir = _formatar_para_exibicao(df_filtrado[df_filtrado["__tipo"] == "mensal"])
+            df_anual_exibir = _formatar_para_exibicao(df_filtrado[df_filtrado["__tipo"] == "anual"])
+
+            col_mensal, col_anual = st.columns(2)
+
+            with col_mensal:
+                with st.container(border=True):
+                    st.subheader("📆 Quotas mensais")
+                    if df_mensal_exibir.empty:
+                        st.info("ℹ️ Nenhuma quota mensal encontrada para os filtros aplicados.")
+                    else:
+                        st.dataframe(
+                            df_mensal_exibir,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
+                                "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
+                                "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
+                            },
+                        )
+
+            with col_anual:
+                with st.container(border=True):
+                    st.subheader("📅 Quotas anuais")
+                    if df_anual_exibir.empty:
+                        st.info("ℹ️ Nenhuma quota anual encontrada para os filtros aplicados.")
+                    else:
+                        st.dataframe(
+                            df_anual_exibir,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
+                                "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
+                                "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
+                            },
+                        )
+
+            if selecionados and df_filtrado.empty:
+                st.caption("Nenhum registo corresponde ao filtro de escuteiros selecionado.")
 
     with aba_eventos:
         st.markdown("### 📅 Eventos sem voluntários")
