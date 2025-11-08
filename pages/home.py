@@ -6,6 +6,7 @@ import altair as alt
 from pyairtable import Api
 from menu import menu_with_redirect
 import locale
+import unicodedata
 import time
 from datetime import date, datetime, timedelta
 from urllib.parse import urlparse, urlunparse
@@ -195,6 +196,13 @@ def formatar_moeda_euro(valor) -> str:
     texto = f"{numero:,.2f}"
     texto = texto.replace(",", "x").replace(".", ",").replace("x", ".")
     return f"{texto}€"
+
+
+def _normalizar_texto(valor: str) -> str:
+    if not isinstance(valor, str):
+        return ""
+    texto = unicodedata.normalize("NFKD", str(valor))
+    return "".join(ch for ch in texto.lower() if not unicodedata.combining(ch))
 
 
 def construir_mapa_nomes_por_id(dataset: dict) -> dict[str, str]:
@@ -1348,10 +1356,32 @@ def dashboard_admin(dados: dict):
                 return col_name
         return None
 
-    def _preparar_df_quotas(df_like: pd.DataFrame) -> pd.DataFrame:
-        base_columns = ["Data da cobrança", "Escuteiro", "Valor", "__tipo", "__data"]
+    def _find_column_keywords(df_like: pd.DataFrame, keyword_groups: list[tuple[str, ...]]):
         if df_like is None or df_like.empty:
-            return pd.DataFrame(columns=base_columns)
+            return None
+        for keywords in keyword_groups:
+            tokens = [_normalizar_texto(token) for token in keywords if token]
+            if not tokens:
+                continue
+            for coluna in df_like.columns:
+                nome_norm = _normalizar_texto(coluna)
+                if all(token in nome_norm for token in tokens):
+                    return coluna
+        return None
+
+    def _preparar_df_quotas(df_like: pd.DataFrame) -> pd.DataFrame:
+        base_columns = [
+            "Data da cobrança",
+            "Escuteiro",
+            "Valor",
+            "__tipo",
+            "__data",
+            "__periodo_label",
+        ]
+        if df_like is None or df_like.empty:
+            vazio = pd.DataFrame(columns=base_columns)
+            vazio["Valor"] = pd.Series(dtype="float64")
+            return vazio
 
         df_display = df_like.copy()
 
@@ -1366,21 +1396,63 @@ def dashboard_admin(dados: dict):
                 "Tipo de Pagamento",
             ],
         )
+        if not tipo_col:
+            tipo_col = _find_column_keywords(
+                df_display,
+                [
+                    ("tipo", "quota"),
+                    ("tipo",),
+                ],
+            )
+
+        periodo_col = _first_existing_col(
+            df_display,
+            [
+                "Quota_periodo",
+                "Quota Periodo",
+                "Quota Período",
+                "Quota período",
+                "Quota - Período",
+                "Período",
+            ],
+        )
+        if not periodo_col:
+            periodo_col = _find_column_keywords(
+                df_display,
+                [
+                    ("quota", "periodo"),
+                    ("quota", "período"),
+                    ("periodo",),
+                ],
+            )
+        if not periodo_col and tipo_col:
+            periodo_col = tipo_col
+
+        def _stringify(valor) -> str:
+            if isinstance(valor, list):
+                valores = [str(item).strip() for item in valor if str(item).strip()]
+                return ", ".join(valores)
+            if pd.isna(valor):
+                return ""
+            return str(valor).strip()
+
+        if periodo_col:
+            df_display["__periodo_label"] = df_display[periodo_col].apply(_stringify)
+        elif tipo_col:
+            df_display["__periodo_label"] = df_display[tipo_col].apply(_stringify)
+        else:
+            df_display["__periodo_label"] = pd.Series("", index=df_display.index, dtype="object")
 
         def _extrair_tipo(valor) -> str:
-            if isinstance(valor, list):
-                valor = valor[0] if valor else ""
-            texto = str(valor or "").strip().lower()
-            if "mens" in texto:
+            texto_norm = _normalizar_texto(_stringify(valor))
+            if "mens" in texto_norm:
                 return "mensal"
-            if "anu" in texto:
+            if "anu" in texto_norm:
                 return "anual"
             return ""
 
-        if tipo_col:
-            df_display["__tipo"] = df_display[tipo_col].apply(_extrair_tipo)
-        else:
-            df_display["__tipo"] = ""
+        origem_tipo = df_display[tipo_col] if tipo_col and tipo_col in df_display.columns else df_display["__periodo_label"]
+        df_display["__tipo"] = origem_tipo.apply(_extrair_tipo)
 
         data_col = _first_existing_col(
             df_display,
@@ -1393,6 +1465,15 @@ def dashboard_admin(dados: dict):
                 "Data",
             ],
         )
+        if not data_col:
+            data_col = _find_column_keywords(
+                df_display,
+                [
+                    ("data", "cobranca"),
+                    ("data", "cobrança"),
+                    ("data",),
+                ],
+            )
         if data_col:
             df_display["__data"] = pd.to_datetime(df_display[data_col], errors="coerce")
             df_display["Data da cobrança"] = df_display["__data"].dt.strftime("%d/%m/%Y")
@@ -1413,6 +1494,14 @@ def dashboard_admin(dados: dict):
                 "Responsável",
             ],
         )
+        if not esc_col:
+            esc_col = _find_column_keywords(
+                df_display,
+                [
+                    ("escuteiro",),
+                    ("nome", "escuteiro"),
+                ],
+            )
         if esc_col:
             df_display["Escuteiro"] = df_display[esc_col].apply(lambda v: mapear_lista(v, escuteiros_map))
         else:
@@ -1429,15 +1518,24 @@ def dashboard_admin(dados: dict):
                 "Valor Recebido",
             ],
         )
+        if not valor_col:
+            valor_col = _find_column_keywords(
+                df_display,
+                [
+                    ("valor",),
+                    ("montante",),
+                ],
+            )
         if valor_col:
             df_display["Valor"] = pd.to_numeric(df_display[valor_col], errors="coerce")
         else:
             df_display["Valor"] = pd.Series(dtype="float64", index=df_display.index)
 
         resultado = df_display[
-            ["Data da cobrança", "Escuteiro", "Valor", "__tipo", "__data"]
+            ["Data da cobrança", "Escuteiro", "Valor", "__tipo", "__data", "__periodo_label"]
         ].copy()
         resultado["__tipo"] = resultado["__tipo"].fillna("")
+        resultado["__periodo_label"] = resultado["__periodo_label"].fillna("")
         return resultado
 
     aba_resumo, aba_formularios, aba_pedidos, aba_quotas, aba_eventos = st.tabs(
@@ -1680,13 +1778,28 @@ def dashboard_admin(dados: dict):
                     for nome in _nomes_validos(nomes)
                 }
             )
-            filtro_col, _ = st.columns([3, 1])
-            with filtro_col:
+            periodos_opcoes = sorted(
+                {
+                    periodo
+                    for periodo in df_quotas_preparado["__periodo_label"]
+                    if isinstance(periodo, str) and periodo.strip()
+                }
+            )
+
+            filtro_cols = st.columns([3, 2])
+            with filtro_cols[0]:
                 selecionados = st.multiselect(
                     "Filtrar por escuteiro",
                     options=nomes_opcoes,
                     key="admin_quotas_filter",
                     help="Selecione um ou mais escuteiros para limitar as tabelas abaixo.",
+                )
+            with filtro_cols[1]:
+                periodos_selecionados = st.multiselect(
+                    "Filtrar por período da quota",
+                    options=periodos_opcoes,
+                    key="admin_quotas_periodo_filter",
+                    help="Escolha períodos específicos (ex.: Quota Mensal, Quota Anual).",
                 )
 
             df_filtrado = df_quotas_preparado.copy()
@@ -1699,6 +1812,11 @@ def dashboard_admin(dados: dict):
                             for nome in _nomes_validos(nomes)
                         )
                     )
+                ]
+            if periodos_selecionados:
+                periodos_normalizados = {periodo for periodo in periodos_selecionados if periodo}
+                df_filtrado = df_filtrado[
+                    df_filtrado["__periodo_label"].isin(periodos_normalizados)
                 ]
 
             sem_tipo = df_filtrado[df_filtrado["__tipo"] == ""]
@@ -1718,8 +1836,16 @@ def dashboard_admin(dados: dict):
                     ascending=[False, False],
                     na_position="last",
                 ).copy()
-                df_temp.drop(columns=["__tipo", "__data"], inplace=True, errors="ignore")
+                df_temp["Período"] = df_temp.get("__periodo_label", "")
+                df_temp.drop(columns=["__tipo", "__data", "__periodo_label"], inplace=True, errors="ignore")
                 df_temp["Data da cobrança"] = df_temp["Data da cobrança"].fillna("")
+                ordem = [
+                    coluna
+                    for coluna in ["Data da cobrança", "Escuteiro", "Período", "Valor"]
+                    if coluna in df_temp.columns
+                ]
+                if ordem:
+                    df_temp = df_temp[ordem]
                 return df_temp
 
             df_mensal_exibir = _formatar_para_exibicao(df_filtrado[df_filtrado["__tipo"] == "mensal"])
@@ -1733,16 +1859,17 @@ def dashboard_admin(dados: dict):
                     if df_mensal_exibir.empty:
                         st.info("ℹ️ Nenhuma quota mensal encontrada para os filtros aplicados.")
                     else:
-                        st.dataframe(
-                            df_mensal_exibir,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
-                                "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
-                                "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
-                            },
-                        )
+                            st.dataframe(
+                                df_mensal_exibir,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
+                                    "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
+                                    "Período": st.column_config.TextColumn("Período", width="medium"),
+                                    "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
+                                },
+                            )
 
             with col_anual:
                 with st.container(border=True):
@@ -1750,19 +1877,20 @@ def dashboard_admin(dados: dict):
                     if df_anual_exibir.empty:
                         st.info("ℹ️ Nenhuma quota anual encontrada para os filtros aplicados.")
                     else:
-                        st.dataframe(
-                            df_anual_exibir,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
-                                "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
-                                "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
-                            },
-                        )
+                            st.dataframe(
+                                df_anual_exibir,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
+                                    "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
+                                    "Período": st.column_config.TextColumn("Período", width="medium"),
+                                    "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
+                                },
+                            )
 
-            if selecionados and df_filtrado.empty:
-                st.caption("Nenhum registo corresponde ao filtro de escuteiros selecionado.")
+            if (selecionados or periodos_selecionados) and df_filtrado.empty:
+                st.caption("Nenhum registo corresponde aos filtros aplicados.")
 
     with aba_eventos:
         st.markdown("### 📅 Eventos sem voluntários")
