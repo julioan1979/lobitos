@@ -1507,6 +1507,30 @@ def dashboard_admin(dados: dict):
         else:
             df_display["Escuteiro"] = df_display.get("Escuteiro", "").fillna("").astype(str)
 
+        def _parse_valor(valor):
+            if isinstance(valor, list):
+                for item in valor:
+                    resultado = _parse_valor(item)
+                    if resultado is not None:
+                        return resultado
+                return None
+            if isinstance(valor, (int, float)):
+                return float(valor)
+            if pd.isna(valor):
+                return None
+            texto = str(valor).strip().strip('"')
+            texto = texto.replace("€", "").replace(" ", "")
+            if texto.count(",") > 1 and "." not in texto:
+                texto = texto.replace(".", "")
+            if "," in texto and "." in texto:
+                texto = texto.replace(".", "").replace(",", ".")
+            elif "," in texto:
+                texto = texto.replace(",", ".")
+            try:
+                return float(texto)
+            except ValueError:
+                return None
+
         valor_col = _first_existing_col(
             df_display,
             [
@@ -1527,7 +1551,7 @@ def dashboard_admin(dados: dict):
                 ],
             )
         if valor_col:
-            df_display["Valor"] = pd.to_numeric(df_display[valor_col], errors="coerce")
+            df_display["Valor"] = df_display[valor_col].apply(_parse_valor)
         else:
             df_display["Valor"] = pd.Series(dtype="float64", index=df_display.index)
 
