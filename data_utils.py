@@ -194,6 +194,8 @@ def preparar_dataframe_estornos(
             "Registado Por",
             "Responsável",
             "Criado Por",
+            "Quem devolveu o numerário?",
+            "Quem devolveu o numerario",
         ],
     )
     coluna_motivo = escolher_coluna(
@@ -249,9 +251,9 @@ def preparar_dataframe_estornos(
                     return texto
             return mapear_lista(valor, {})
 
-        resultado["Quem Estornou"] = df_trabalho[coluna_responsavel].apply(_mapear_responsavel)
+        resultado["Responsável"] = df_trabalho[coluna_responsavel].apply(_mapear_responsavel)
     if coluna_motivo:
-        resultado["Motivo do Estorno"] = df_trabalho[coluna_motivo].apply(lambda valor: mapear_lista(valor, {}))
+        resultado["Categoria"] = df_trabalho[coluna_motivo].apply(lambda valor: mapear_lista(valor, {}))
 
     resultado = resultado.dropna(how="all")
     if "Valor (€)" in resultado.columns:
@@ -277,6 +279,17 @@ def preparar_dataframe_recebimentos(
                 )
                 break
 
+    coluna_categoria = escolher_coluna(
+        df_rec,
+        [
+            "Tag_Recebimento",
+            "Tag Recebimento",
+            "Categoria",
+            "Motivo",
+            "Tag",
+        ],
+    )
+
     if isinstance(df_rec, pd.DataFrame) and not df_rec.empty:
         colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
         colunas_existentes = [c for c in colunas_uteis if c in df_rec.columns]
@@ -289,6 +302,14 @@ def preparar_dataframe_recebimentos(
             "Date": "Data",
             "Quem Recebeu?": "Quem Recebeu",
         })
+
+        if coluna_categoria:
+            def _normalizar_categoria(valor):
+                if isinstance(valor, list):
+                    return ", ".join(str(item) for item in valor if str(item).strip())
+                return valor
+
+            df_rec_limpo["Categoria"] = df_rec[coluna_categoria].apply(_normalizar_categoria)
 
         if escuteiros_map and "Escuteiro" in df_rec_limpo.columns:
             df_rec_limpo["Escuteiro"] = df_rec_limpo["Escuteiro"].apply(
@@ -348,5 +369,25 @@ def preparar_dataframe_recebimentos(
 
     if not df_rec_limpo.empty and "Data" in df_rec_limpo.columns:
         df_rec_limpo["Data"] = pd.to_datetime(df_rec_limpo["Data"], errors="coerce").dt.normalize()
+
+    colunas_desejadas = ["Escuteiro", "Valor (€)", "Categoria", "Meio de Pagamento", "Data", "Responsável"]
+
+    if not df_rec_limpo.empty:
+        if "Categoria" in df_rec_limpo.columns:
+            df_rec_limpo["Categoria"] = df_rec_limpo["Categoria"].apply(lambda valor: mapear_lista(valor, {}))
+        else:
+            df_rec_limpo["Categoria"] = ""
+
+        if "Quem Recebeu" in df_rec_limpo.columns:
+            df_rec_limpo.rename(columns={"Quem Recebeu": "Responsável"}, inplace=True)
+        else:
+            df_rec_limpo["Responsável"] = ""
+
+        for coluna in colunas_desejadas:
+            if coluna not in df_rec_limpo.columns:
+                df_rec_limpo[coluna] = ""
+        df_rec_limpo = df_rec_limpo[colunas_desejadas]
+    else:
+        df_rec_limpo = pd.DataFrame(columns=colunas_desejadas)
 
     return df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids

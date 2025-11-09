@@ -371,6 +371,8 @@ def preparar_dataframe_estornos(
             "Registado Por",
             "Responsável",
             "Criado Por",
+            "Quem devolveu o numerário?",
+            "Quem devolveu o numerario",
         ],
     )
     coluna_motivo = escolher_coluna(
@@ -426,9 +428,9 @@ def preparar_dataframe_estornos(
                     return texto
             return mapear_lista(valor, {})
 
-        resultado["Quem Estornou"] = df_trabalho[coluna_responsavel].apply(_mapear_responsavel)
+        resultado["Responsável"] = df_trabalho[coluna_responsavel].apply(_mapear_responsavel)
     if coluna_motivo:
-        resultado["Motivo do Estorno"] = df_trabalho[coluna_motivo].apply(lambda valor: mapear_lista(valor, {}))
+        resultado["Categoria"] = df_trabalho[coluna_motivo].apply(lambda valor: mapear_lista(valor, {}))
 
     resultado = resultado.dropna(how="all")
     if "Valor (€)" in resultado.columns:
@@ -1221,7 +1223,7 @@ def dashboard_tesoureiro(dados: dict):
 
     def _preparar_recebimentos(dados: dict) -> tuple[pd.DataFrame, dict[str, str], dict[str, str], dict[str, str]]:
         df_rec = dados.get("Recebimento", pd.DataFrame())
-        expected_columns = ["Escuteiro", "Valor (€)", "Meio de Pagamento", "Data", "Quem Recebeu"]
+        expected_columns = ["Escuteiro", "Valor (€)", "Categoria", "Meio de Pagamento", "Data", "Responsável"]
         if df_rec is None or df_rec.empty:
             vazio = pd.DataFrame(columns=expected_columns)
             vazio["Valor (€)"] = pd.Series(dtype="float64")
@@ -1245,6 +1247,25 @@ def dashboard_tesoureiro(dados: dict):
                 "Quem Recebeu?": "Quem Recebeu",
             }
         )
+
+        coluna_categoria = escolher_coluna(
+            df_rec,
+            [
+                "Tag_Recebimento",
+                "Tag Recebimento",
+                "Categoria",
+                "Motivo",
+                "Tag",
+            ],
+        )
+
+        if coluna_categoria and coluna_categoria in df_rec.columns:
+            def _normalizar_categoria(valor):
+                if isinstance(valor, list):
+                    return ", ".join(str(item) for item in valor if str(item).strip())
+                return valor
+
+            df_limpo["Categoria"] = df_rec[coluna_categoria].apply(_normalizar_categoria)
 
         df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
         escuteiros_map: dict[str, str] = {}
@@ -1309,7 +1330,17 @@ def dashboard_tesoureiro(dados: dict):
         else:
             df_limpo["Data"] = pd.Series(dtype="datetime64[ns]")
 
-        for coluna in ("Escuteiro", "Meio de Pagamento", "Quem Recebeu"):
+        if "Categoria" in df_limpo.columns:
+            df_limpo["Categoria"] = df_limpo["Categoria"].apply(lambda valor: mapear_lista(valor, {}))
+        else:
+            df_limpo["Categoria"] = ""
+
+        if "Quem Recebeu" in df_limpo.columns:
+            df_limpo.rename(columns={"Quem Recebeu": "Responsável"}, inplace=True)
+        else:
+            df_limpo["Responsável"] = ""
+
+        for coluna in ("Escuteiro", "Categoria", "Meio de Pagamento", "Responsável"):
             if coluna not in df_limpo.columns:
                 df_limpo[coluna] = ""
 
@@ -1317,7 +1348,7 @@ def dashboard_tesoureiro(dados: dict):
         return df_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids
 
     def _normalizar_estornos(df_estornos: pd.DataFrame | None) -> pd.DataFrame:
-        expected_columns = ["Escuteiro", "Valor (€)", "Motivo", "Data", "Quem Recebeu"]
+        expected_columns = ["Escuteiro", "Valor (€)", "Categoria", "Meio de Pagamento", "Data", "Responsável"]
         if df_estornos is None or not isinstance(df_estornos, pd.DataFrame) or df_estornos.empty:
             vazio = pd.DataFrame(columns=expected_columns)
             vazio["Valor (€)"] = pd.Series(dtype="float64")
