@@ -1548,16 +1548,16 @@ def dashboard_tesoureiro(dados: dict):
         return 0.0
 
     categorias_destacadas = [
-        ("Lanches", "🥪 Lanches"),
-        ("Quota Mensal", "🗓️ Quota Mensal"),
-        ("Quota Anual", "📅 Quota Anual"),
+        ({"lanches"}, "🥪 Lanches"),
+        ({"quota mensal", "cota mensal"}, "🗓️ Quota Mensal"),
+        ({"quota anual", "cota anual"}, "📅 Quota Anual"),
     ]
 
     st.markdown("##### Detalhe por categoria")
     cols_categorias = st.columns(len(categorias_destacadas))
-    for (chave_categoria, label_categoria), coluna in zip(categorias_destacadas, cols_categorias):
-        recebido_categoria = _total_por_categoria(df_rec_periodo, chave_categoria)
-        estornado_categoria = _total_por_categoria(df_estornos_periodo, chave_categoria)
+    for (chaves_categoria, label_categoria), coluna in zip(categorias_destacadas, cols_categorias):
+        recebido_categoria = sum(_total_por_categoria(df_rec_periodo, chave) for chave in chaves_categoria)
+        estornado_categoria = sum(_total_por_categoria(df_estornos_periodo, chave) for chave in chaves_categoria)
         saldo_categoria = recebido_categoria - estornado_categoria
         with coluna:
             coluna.metric(
