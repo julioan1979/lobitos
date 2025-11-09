@@ -85,6 +85,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Permissoes",
             "Publicar Menu do Scouts",
             "Quotas",
+            "Tipo de Cotas",
         ],
         "admin": [
             "Pedidos",
@@ -97,11 +98,12 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Permissoes",
             "Publicar Menu do Scouts",
             "Quotas",
+            "Tipo de Cotas",
         ],
     }
 
     lista_tabelas = tabelas_por_role.get(role, [])
-    tabelas_opcionais = {"Quotas"}
+    tabelas_opcionais = {"Quotas", "Tipo de Cotas"}
 
     for nome in lista_tabelas:
         try:
@@ -1301,6 +1303,7 @@ def dashboard_admin(dados: dict):
     df_esc = dados.get("Escuteiros", pd.DataFrame())
     df_recipes = dados.get("Recipes", pd.DataFrame())
     df_quotas = dados.get("Quotas", pd.DataFrame())
+    df_tipo_cotas = dados.get("Tipo de Cotas", pd.DataFrame())
 
     hoje = pd.Timestamp.today().normalize()
 
@@ -1321,6 +1324,22 @@ def dashboard_admin(dados: dict):
             .dropna()
             .to_dict()
         )
+
+    tipo_cotas_map: dict[str, str] = {}
+    if df_tipo_cotas is not None and not df_tipo_cotas.empty and "id" in df_tipo_cotas.columns:
+        col_tipo_nome = _first_existing_col(
+            df_tipo_cotas,
+            [
+                "Tipo de Quotas",
+                "Nome",
+                "Name",
+                "Tipo",
+                "Descrição",
+            ],
+        )
+        if col_tipo_nome:
+            serie_map = df_tipo_cotas.set_index("id")[col_tipo_nome].dropna()
+            tipo_cotas_map = {str(idx): str(valor) for idx, valor in serie_map.items()}
 
     def _ensure_checkbox(df_like: pd.DataFrame, coluna: str) -> pd.Series:
         if coluna not in df_like.columns:
@@ -1375,6 +1394,7 @@ def dashboard_admin(dados: dict):
             "Escuteiro",
             "Valor",
             "__tipo",
+            "__tipo_label",
             "__data",
             "__periodo_label",
         ]
@@ -1428,31 +1448,49 @@ def dashboard_admin(dados: dict):
         if not periodo_col and tipo_col:
             periodo_col = tipo_col
 
-        def _stringify(valor) -> str:
+        def _stringify(valor, *, map_tipo: bool = False) -> str:
             if isinstance(valor, list):
-                valores = [str(item).strip() for item in valor if str(item).strip()]
+                valores = []
+                for item in valor:
+                    texto_item = _stringify(item, map_tipo=map_tipo)
+                    if texto_item:
+                        valores.append(texto_item)
                 return ", ".join(valores)
             if pd.isna(valor):
                 return ""
-            return str(valor).strip()
+            texto = str(valor).strip()
+            if map_tipo:
+                return tipo_cotas_map.get(texto, texto)
+            return texto
+
+        if tipo_col:
+            df_display["__tipo_label"] = df_display[tipo_col].apply(lambda v: _stringify(v, map_tipo=True))
+        else:
+            df_display["__tipo_label"] = ""
 
         if periodo_col:
-            df_display["__periodo_label"] = df_display[periodo_col].apply(_stringify)
+            df_display["__periodo_label"] = df_display[periodo_col].apply(
+                lambda v: _stringify(v, map_tipo=periodo_col == tipo_col)
+            )
         elif tipo_col:
-            df_display["__periodo_label"] = df_display[tipo_col].apply(_stringify)
+            df_display["__periodo_label"] = df_display["__tipo_label"]
         else:
             df_display["__periodo_label"] = pd.Series("", index=df_display.index, dtype="object")
 
-        def _extrair_tipo(valor) -> str:
-            texto_norm = _normalizar_texto(_stringify(valor))
+        def _detectar_tipo(texto: str) -> str:
+            texto_norm = _normalizar_texto(texto)
             if "mens" in texto_norm:
                 return "mensal"
             if "anu" in texto_norm:
                 return "anual"
             return ""
 
-        origem_tipo = df_display[tipo_col] if tipo_col and tipo_col in df_display.columns else df_display["__periodo_label"]
-        df_display["__tipo"] = origem_tipo.apply(_extrair_tipo)
+        df_display["__tipo"] = df_display["__tipo_label"].apply(_detectar_tipo)
+        if df_display["__tipo"].eq("").any():
+            mascara_sem_tipo = df_display["__tipo"].eq("")
+            df_display.loc[mascara_sem_tipo, "__tipo"] = df_display.loc[mascara_sem_tipo, "__periodo_label"].apply(
+                _detectar_tipo
+            )
 
         data_col = _first_existing_col(
             df_display,
@@ -1556,9 +1594,10 @@ def dashboard_admin(dados: dict):
             df_display["Valor"] = pd.Series(dtype="float64", index=df_display.index)
 
         resultado = df_display[
-            ["Data da cobrança", "Escuteiro", "Valor", "__tipo", "__data", "__periodo_label"]
+            ["Data da cobrança", "Escuteiro", "Valor", "__tipo", "__tipo_label", "__data", "__periodo_label"]
         ].copy()
         resultado["__tipo"] = resultado["__tipo"].fillna("")
+        resultado["__tipo_label"] = resultado["__tipo_label"].fillna("")
         resultado["__periodo_label"] = resultado["__periodo_label"].fillna("")
         return resultado
 
@@ -1860,12 +1899,17 @@ def dashboard_admin(dados: dict):
                     ascending=[False, False],
                     na_position="last",
                 ).copy()
+                df_temp["Tipo"] = df_temp.get("__tipo_label", "")
                 df_temp["Período"] = df_temp.get("__periodo_label", "")
-                df_temp.drop(columns=["__tipo", "__data", "__periodo_label"], inplace=True, errors="ignore")
+                df_temp.drop(
+                    columns=["__tipo", "__tipo_label", "__data", "__periodo_label"],
+                    inplace=True,
+                    errors="ignore",
+                )
                 df_temp["Data da cobrança"] = df_temp["Data da cobrança"].fillna("")
                 ordem = [
                     coluna
-                    for coluna in ["Data da cobrança", "Escuteiro", "Período", "Valor"]
+                    for coluna in ["Data da cobrança", "Escuteiro", "Tipo", "Período", "Valor"]
                     if coluna in df_temp.columns
                 ]
                 if ordem:
@@ -1883,17 +1927,18 @@ def dashboard_admin(dados: dict):
                     if df_mensal_exibir.empty:
                         st.info("ℹ️ Nenhuma quota mensal encontrada para os filtros aplicados.")
                     else:
-                            st.dataframe(
-                                df_mensal_exibir,
-                                use_container_width=True,
-                                hide_index=True,
-                                column_config={
-                                    "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
-                                    "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
-                                    "Período": st.column_config.TextColumn("Período", width="medium"),
-                                    "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
-                                },
-                            )
+                                st.dataframe(
+                                    df_mensal_exibir,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={
+                                        "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
+                                        "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
+                                        "Tipo": st.column_config.TextColumn("Tipo", width="small"),
+                                        "Período": st.column_config.TextColumn("Período", width="medium"),
+                                        "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
+                                    },
+                                )
 
             with col_anual:
                 with st.container(border=True):
@@ -1901,17 +1946,18 @@ def dashboard_admin(dados: dict):
                     if df_anual_exibir.empty:
                         st.info("ℹ️ Nenhuma quota anual encontrada para os filtros aplicados.")
                     else:
-                            st.dataframe(
-                                df_anual_exibir,
-                                use_container_width=True,
-                                hide_index=True,
-                                column_config={
-                                    "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
-                                    "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
-                                    "Período": st.column_config.TextColumn("Período", width="medium"),
-                                    "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
-                                },
-                            )
+                                st.dataframe(
+                                    df_anual_exibir,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={
+                                        "Data da cobrança": st.column_config.TextColumn("Data da cobrança", width="small"),
+                                        "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
+                                        "Tipo": st.column_config.TextColumn("Tipo", width="small"),
+                                        "Período": st.column_config.TextColumn("Período", width="medium"),
+                                        "Valor": st.column_config.NumberColumn("Valor", format="%.2f €", width="small"),
+                                    },
+                                )
 
             if (selecionados or periodos_selecionados) and df_filtrado.empty:
                 st.caption("Nenhum registo corresponde aos filtros aplicados.")
