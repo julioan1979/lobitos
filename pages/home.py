@@ -1076,7 +1076,7 @@ def dashboard_tesoureiro(dados: dict):
             *,
             integer_cols: tuple[str, ...] = (),
             numeric_cols: tuple[str, ...] = (),
-        ) -> dict[str, st.ColumnConfig]:
+        ) -> dict[str, Any]:
             config: dict[str, st.ColumnConfig] = {}
             if "Escuteiro" in tabela.columns:
                 config["Escuteiro"] = st.column_config.TextColumn("Escuteiro", width="medium")
