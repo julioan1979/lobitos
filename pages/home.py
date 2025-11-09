@@ -391,13 +391,24 @@ def preparar_dataframe_estornos(
         resultado["Escuteiro"] = df_trabalho[coluna_escuteiro].apply(lambda valor: mapear_lista(valor, escuteiros_map))
 
     if coluna_valor:
-        resultado["Valor (€)"] = pd.to_numeric(df_trabalho[coluna_valor], errors="coerce").abs()
+        def _extrair_valor(valor):
+            if isinstance(valor, list):
+                return valor[0] if valor else None
+            if isinstance(valor, dict) and "value" in valor:
+                return valor["value"]
+            return valor
+
+        valores = df_trabalho[coluna_valor].apply(_extrair_valor)
+        resultado["Valor (€)"] = pd.to_numeric(valores, errors="coerce").abs()
 
     if coluna_meio:
-        resultado["Meio de Pagamento"] = df_trabalho[coluna_meio]
+        resultado["Meio de Pagamento"] = df_trabalho[coluna_meio].apply(
+            lambda valor: valor[0] if isinstance(valor, list) and valor else valor
+        )
 
     if coluna_data:
-        resultado["Data"] = pd.to_datetime(df_trabalho[coluna_data], errors="coerce").dt.normalize()
+        datas = df_trabalho[coluna_data].apply(lambda v: v[0] if isinstance(v, list) and v else v)
+        resultado["Data"] = pd.to_datetime(datas, errors="coerce").dt.normalize()
 
     if coluna_responsavel:
         def _mapear_responsavel(valor):
