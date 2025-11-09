@@ -84,6 +84,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Escuteiros",
             "Recebimento",
             "Estorno de Recebimento",
+            "Estornos de Recebimento",
             "Permissoes",
             "Publicar Menu do Scouts",
             "Quotas",
@@ -97,6 +98,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
             "Recipes",
             "Recebimento",
             "Estorno de Recebimento",
+            "Estornos de Recebimento",
             "Permissoes",
             "Publicar Menu do Scouts",
             "Quotas",
@@ -105,7 +107,7 @@ def carregar_todas_as_tabelas(base_id: str, role: str) -> dict:
     }
 
     lista_tabelas = tabelas_por_role.get(role, [])
-    tabelas_opcionais = {"Quotas", "Tipo de Cotas"}
+    tabelas_opcionais = {"Quotas", "Tipo de Cotas", "Estornos de Recebimento"}
 
     for nome in lista_tabelas:
         try:
@@ -371,6 +373,17 @@ def preparar_dataframe_estornos(
             "Criado Por",
         ],
     )
+    coluna_motivo = escolher_coluna(
+        df_trabalho,
+        [
+            "Tag_Cancelamento",
+            "Tag Cancelamento",
+            "Motivo do Estorno",
+            "Motivo Estorno",
+            "Motivo",
+            "Tag",
+        ],
+    )
 
     resultado = pd.DataFrame(index=df_trabalho.index)
 
@@ -403,6 +416,8 @@ def preparar_dataframe_estornos(
             return mapear_lista(valor, {})
 
         resultado["Quem Estornou"] = df_trabalho[coluna_responsavel].apply(_mapear_responsavel)
+    if coluna_motivo:
+        resultado["Motivo do Estorno"] = df_trabalho[coluna_motivo].apply(lambda valor: mapear_lista(valor, {}))
 
     resultado = resultado.dropna(how="all")
     if "Valor (€)" in resultado.columns:
