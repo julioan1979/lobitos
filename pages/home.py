@@ -1393,7 +1393,20 @@ def dashboard_tesoureiro(dados: dict):
         if df_base.empty:
             st.info(mensagem_vazio)
             return
-        st.dataframe(_aplicar_formatacao_display(df_base), use_container_width=True)
+        display_df = _aplicar_formatacao_display(df_base)
+        column_config = {
+            "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
+            "Valor (€)": st.column_config.TextColumn("Valor (€)", width="small"),
+            "Categoria": st.column_config.TextColumn("Categoria", width="medium"),
+            "Meio de Pagamento": st.column_config.TextColumn("Meio de Pagamento", width="medium"),
+            "Data": st.column_config.TextColumn("Data", width="small"),
+            "Responsável": st.column_config.TextColumn("Responsável", width="medium"),
+        }
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            column_config={col: cfg for col, cfg in column_config.items() if col in display_df.columns},
+        )
 
     df_rec_origem = dados.get("Recebimento", pd.DataFrame())
     df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids = _preparar_recebimentos(dados)
