@@ -715,7 +715,35 @@ def dashboard_pais():
     with col_restante[4]:
         st.metric("Doações", _formatar_euro(doacoes))
     with col_restante[5]:
-        st.metric("Saldo Geral", _formatar_euro(saldo))
+        saldo_display = _formatar_euro(saldo)
+        saldo_cor = "#16A34A" if saldo >= 0 else "#DC2626"
+        saldo_bg = "rgba(22, 163, 74, 0.15)" if saldo >= 0 else "rgba(220, 38, 38, 0.15)"
+        st.markdown(
+            f"""
+            <div style="
+                padding: 0.75rem 1rem;
+                border-radius: 0.75rem;
+                background-color: {saldo_bg};
+                border: 1px solid {saldo_cor}33;
+                box-shadow: 0 12px 20px -18px {saldo_cor};
+            ">
+                <div style="
+                    font-size: 0.85rem;
+                    letter-spacing: 0.05em;
+                    text-transform: uppercase;
+                    color: #d1d5db;
+                    font-weight: 600;
+                ">Saldo Geral</div>
+                <div style="
+                    margin-top: 0.35rem;
+                    font-size: 1.7rem;
+                    font-weight: 700;
+                    color: {saldo_cor};
+                ">{saldo_display}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.divider()
 
