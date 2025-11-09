@@ -981,12 +981,44 @@ def dashboard_tesoureiro(dados: dict):
 
     # Conta Corrente
     st.divider()
-    st.markdown("### 💰 Conta Corrente dos Escuteiros")
+    header_cols = st.columns([4, 1])
+    with header_cols[0]:
+        st.markdown("### 💰 Conta Corrente dos Escuteiros")
 
     df_cc = dados.get("Escuteiros", pd.DataFrame())
     if df_cc.empty:
+        with header_cols[1]:
+            st.empty()
         st.info("ℹ️ Não há movimentos financeiros registados.")
     else:
+        filtro_padrao = "Todos os escuteiros"
+        lista_escuteiros = sorted(
+            df_cc.get("Nome do Escuteiro", pd.Series(dtype=str))
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+
+        with header_cols[1]:
+            with st.expander("Filtrar escuteiro", expanded=False, icon="🔍"):
+                st.session_state.setdefault("cc_filtro_escuteiro", filtro_padrao)
+                opcoes_filtro = [filtro_padrao] + lista_escuteiros
+                if st.session_state["cc_filtro_escuteiro"] not in opcoes_filtro:
+                    st.session_state["cc_filtro_escuteiro"] = filtro_padrao
+                filtro_escolhido = st.selectbox(
+                    "Escuteiro",
+                    options=opcoes_filtro,
+                    index=opcoes_filtro.index(st.session_state["cc_filtro_escuteiro"]),
+                    key="cc_filtro_escuteiro_select",
+                )
+                st.session_state["cc_filtro_escuteiro"] = filtro_escolhido
+
+        if st.session_state["cc_filtro_escuteiro"] != filtro_padrao and "Nome do Escuteiro" in df_cc.columns:
+            df_cc_filtrado = df_cc[df_cc["Nome do Escuteiro"].astype(str) == st.session_state["cc_filtro_escuteiro"]]
+        else:
+            df_cc_filtrado = df_cc
+
         # Selecionar e renomear colunas
         colunas_uteis = [
             "Nome do Escuteiro",
@@ -999,9 +1031,9 @@ def dashboard_tesoureiro(dados: dict):
             "Quota Mensal",
             "Quota Anual",
         ]
-        colunas_existentes = [c for c in colunas_uteis if c in df_cc.columns]
+        colunas_existentes = [c for c in colunas_uteis if c in df_cc_filtrado.columns]
 
-        df_limpo = df_cc[colunas_existentes].rename(columns={
+        df_limpo = df_cc_filtrado[colunas_existentes].rename(columns={
             "Nome do Escuteiro": "Escuteiro",
             "Numero de Lanches": "Nº de Lanches",
             "Lanches": "Valor dos Lanches",
@@ -1087,12 +1119,12 @@ def dashboard_tesoureiro(dados: dict):
             colunas_origem: list[str] = []
             renomear: dict[str, str] = {}
             for origem, destino in mapeamento:
-                if origem in df_cc.columns:
+                if origem in df_cc_filtrado.columns:
                     colunas_origem.append(origem)
                     renomear[origem] = destino
             if not colunas_origem:
                 return pd.DataFrame()
-            tabela = df_cc[colunas_origem].rename(columns=renomear).copy()
+            tabela = df_cc_filtrado[colunas_origem].rename(columns=renomear).copy()
             for coluna in tabela.columns:
                 if coluna in integer_cols:
                     tabela[coluna] = pd.to_numeric(tabela[coluna], errors="coerce").astype("Int64")
