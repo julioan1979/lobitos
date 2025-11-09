@@ -704,34 +704,28 @@ def dashboard_pais():
 
     st.markdown("#### 🗓️ Quota Mensal")
     net_quota_mensal = recebido_quota_mensal - estornado_quota_mensal
-    col_mensal = st.columns(3)
+    col_mensal = st.columns(2)
     with col_mensal[0]:
         st.metric("Recebido líquido Quota Mensal", _formatar_euro(net_quota_mensal))
     with col_mensal[1]:
-        st.metric("Estornado Quota Mensal", _formatar_euro(estornado_quota_mensal))
-    with col_mensal[2]:
         st.metric("Saldo Quota Mensal", _formatar_euro(saldo_quota_mensal))
 
     st.markdown("#### 📅 Quota Anual")
     net_quota_anual = recebido_quota_anual - estornado_quota_anual
-    col_anual = st.columns(3)
+    col_anual = st.columns(2)
     with col_anual[0]:
         st.metric("Recebido líquido Quota Anual", _formatar_euro(net_quota_anual))
     with col_anual[1]:
-        st.metric("Estornado Quota Anual", _formatar_euro(estornado_quota_anual))
-    with col_anual[2]:
         st.metric("Saldo Quota Anual", _formatar_euro(saldo_quota_anual))
 
     st.markdown("#### 🧮 Resumo geral")
     net_recebimentos = recebimentos - estornos
-    col_global = st.columns(4)
+    col_global = st.columns(3)
     with col_global[0]:
         st.metric("Recebimentos líquidos", _formatar_euro(net_recebimentos))
     with col_global[1]:
-        st.metric("Estornos totais", _formatar_euro(estornos))
-    with col_global[2]:
         st.metric("Doações", _formatar_euro(doacoes))
-    with col_global[3]:
+    with col_global[2]:
         st.metric("Saldo atual", _formatar_euro(saldo))
 
     st.divider()
