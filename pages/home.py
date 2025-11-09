@@ -983,8 +983,15 @@ def dashboard_tesoureiro(dados: dict):
 
         # Ordenar colunas na ordem correta
         ordem = [
-            "Escuteiro", "Nº de Lanches", "Valor dos Lanches",
-            "Recebimentos", "Doações", "Estornos", "Quota Mensal", "Quota Anual", "Saldo Conta Corrente"
+            "Escuteiro",
+            "Nº de Lanches",
+            "Valor dos Lanches",
+            "Recebimentos",
+            "Estornos",
+            "Quota Mensal",
+            "Quota Anual",
+            "Doações",
+            "Saldo Conta Corrente",
         ]
         df_limpo = df_limpo[[c for c in ordem if c in df_limpo.columns]]
 
@@ -1012,7 +1019,7 @@ def dashboard_tesoureiro(dados: dict):
         if "Nº de Lanches" in df_limpo.columns:
             column_config["Nº de Lanches"] = st.column_config.NumberColumn("Nº de Lanches", format="%d", width="small")
 
-        for coluna in ["Valor dos Lanches", "Recebimentos", "Doações", "Estornos", "Quota Mensal", "Quota Anual", "Saldo Conta Corrente"]:
+        for coluna in ["Valor dos Lanches", "Recebimentos", "Estornos", "Quota Mensal", "Quota Anual", "Doações", "Saldo Conta Corrente"]:
             if coluna in df_limpo.columns:
                 column_config[coluna] = st.column_config.NumberColumn(coluna, format="%.2f €", width="small")
 
@@ -1021,6 +1028,164 @@ def dashboard_tesoureiro(dados: dict):
             use_container_width=True,
             column_config=column_config,
         )
+
+        def _converter_valor_monetario(valor):
+            if isinstance(valor, list):
+                for item in valor:
+                    convertido = _converter_valor_monetario(item)
+                    if convertido is not None:
+                        return convertido
+                return None
+            if isinstance(valor, (int, float)):
+                return float(valor)
+            if pd.isna(valor):
+                return None
+            texto = str(valor).strip().strip('"')
+            texto = texto.replace("€", "").replace(" ", "")
+            if texto.count(",") > 1 and "." not in texto:
+                texto = texto.replace(".", "")
+            if "," in texto and "." in texto:
+                texto = texto.replace(".", "").replace(",", ".")
+            elif "," in texto:
+                texto = texto.replace(",", ".")
+            try:
+                return float(texto)
+            except ValueError:
+                return None
+
+        def _criar_tabela_detalhe(mapeamento: list[tuple[str, str]], *, integer_cols: tuple[str, ...] = ()) -> pd.DataFrame:
+            colunas_origem: list[str] = []
+            renomear: dict[str, str] = {}
+            for origem, destino in mapeamento:
+                if origem in df_cc.columns:
+                    colunas_origem.append(origem)
+                    renomear[origem] = destino
+            if not colunas_origem:
+                return pd.DataFrame()
+            tabela = df_cc[colunas_origem].rename(columns=renomear).copy()
+            for coluna in tabela.columns:
+                if coluna in integer_cols:
+                    tabela[coluna] = pd.to_numeric(tabela[coluna], errors="coerce").astype("Int64")
+                elif coluna != "Escuteiro":
+                    tabela[coluna] = tabela[coluna].apply(_converter_valor_monetario)
+                    tabela[coluna] = pd.to_numeric(tabela[coluna], errors="coerce")
+            return tabela
+
+        def _configuracao_detalhe(
+            tabela: pd.DataFrame,
+            *,
+            integer_cols: tuple[str, ...] = (),
+            numeric_cols: tuple[str, ...] = (),
+        ) -> dict[str, st.ColumnConfig]:
+            config: dict[str, st.ColumnConfig] = {}
+            if "Escuteiro" in tabela.columns:
+                config["Escuteiro"] = st.column_config.TextColumn("Escuteiro", width="medium")
+            for coluna in integer_cols:
+                if coluna in tabela.columns:
+                    config[coluna] = st.column_config.NumberColumn(coluna, format="%d", width="small")
+            for coluna in numeric_cols:
+                if coluna in tabela.columns:
+                    config[coluna] = st.column_config.NumberColumn(coluna, format="%.2f €", width="small")
+            return config
+
+        mostrar_lanches = st.toggle(
+            "Mostrar tabela detalhada de lanches",
+            value=False,
+            key="admin_toggle_lanches",
+        )
+        if mostrar_lanches:
+            tabela_lanches = _criar_tabela_detalhe(
+                [
+                    ("Nome do Escuteiro", "Escuteiro"),
+                    ("Numero de Lanches", "Nº de Lanches"),
+                    ("Lanches", "Valor dos Lanches"),
+                    ("Vls recebidos lanches", "Recebido (Lanches)"),
+                    ("Vls Estornados Lanches", "Estornado (Lanches)"),
+                    ("Saldo Lanches", "Saldo Lanches"),
+                ],
+                integer_cols=("Nº de Lanches",),
+            )
+            if tabela_lanches.empty:
+                st.info("ℹ️ Não encontrei colunas de lanches na tabela de escuteiros.")
+            else:
+                st.dataframe(
+                    tabela_lanches,
+                    use_container_width=True,
+                    column_config=_configuracao_detalhe(
+                        tabela_lanches,
+                        integer_cols=("Nº de Lanches",),
+                        numeric_cols=(
+                            "Valor dos Lanches",
+                            "Recebido (Lanches)",
+                            "Estornado (Lanches)",
+                            "Saldo Lanches",
+                        ),
+                    ),
+                )
+
+        mostrar_quota_mensal = st.toggle(
+            "Mostrar tabela detalhada de quota mensal",
+            value=False,
+            key="admin_toggle_quota_mensal",
+        )
+        if mostrar_quota_mensal:
+            tabela_quota_mensal = _criar_tabela_detalhe(
+                [
+                    ("Nome do Escuteiro", "Escuteiro"),
+                    ("Quota Mensal", "Quota Mensal Prevista"),
+                    ("Vls recebidos quotas mensal", "Recebido (Quota Mensal)"),
+                    ("Vls Estornados Quotas Mensal", "Estornado (Quota Mensal)"),
+                    ("Saldo Quota Mensal", "Saldo Quota Mensal"),
+                ]
+            )
+            if tabela_quota_mensal.empty:
+                st.info("ℹ️ Não encontrei colunas de quota mensal na tabela de escuteiros.")
+            else:
+                st.dataframe(
+                    tabela_quota_mensal,
+                    use_container_width=True,
+                    column_config=_configuracao_detalhe(
+                        tabela_quota_mensal,
+                        numeric_cols=(
+                            "Quota Mensal Prevista",
+                            "Recebido (Quota Mensal)",
+                            "Estornado (Quota Mensal)",
+                            "Saldo Quota Mensal",
+                        ),
+                    ),
+                )
+
+        mostrar_quota_anual = st.toggle(
+            "Mostrar tabela detalhada de quota anual",
+            value=False,
+            key="admin_toggle_quota_anual",
+        )
+        if mostrar_quota_anual:
+            tabela_quota_anual = _criar_tabela_detalhe(
+                [
+                    ("Nome do Escuteiro", "Escuteiro"),
+                    ("Quota Anual", "Quota Anual Prevista"),
+                    ("Vls recebidos quotas anual", "Recebido (Quota Anual)"),
+                    ("Vls Estornados Quotas Anual", "Estornado (Quota Anual)"),
+                    ("Saldo Quota Anual", "Saldo Quota Anual"),
+                ]
+            )
+            if tabela_quota_anual.empty:
+                st.info("ℹ️ Não encontrei colunas de quota anual na tabela de escuteiros.")
+            else:
+                st.dataframe(
+                    tabela_quota_anual,
+                    use_container_width=True,
+                    column_config=_configuracao_detalhe(
+                        tabela_quota_anual,
+                        numeric_cols=(
+                            "Quota Anual Prevista",
+                            "Recebido (Quota Anual)",
+                            "Estornado (Quota Anual)",
+                            "Saldo Quota Anual",
+                        ),
+                    ),
+                )
 
     # Recebimentos
     st.divider()
