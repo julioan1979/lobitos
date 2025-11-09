@@ -1567,6 +1567,7 @@ def dashboard_tesoureiro(dados: dict):
                     f"Recebido {formatar_moeda_euro(recebido_categoria)} · "
                     f"Estornado {formatar_moeda_euro(estornado_categoria)}"
                 ),
+                delta_color="off",
             )
 
 def dashboard_admin(dados: dict):
