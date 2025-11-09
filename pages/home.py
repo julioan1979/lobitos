@@ -1429,10 +1429,12 @@ def dashboard_tesoureiro(dados: dict):
 
     with filtro_cols[1]:
         botoes = st.columns(len(atalhos_periodo))
+        funcao_selecionada = None
         for (rotulo, funcao_periodo), coluna in zip(atalhos_periodo.items(), botoes):
             if coluna.button(rotulo, use_container_width=True):
-                novo_periodo = funcao_periodo(hoje)
-                break
+                funcao_selecionada = funcao_periodo
+        if funcao_selecionada is not None:
+            novo_periodo = funcao_selecionada(hoje)
 
     valor_inicial = novo_periodo or periodo_atual
     with filtro_cols[0]:
