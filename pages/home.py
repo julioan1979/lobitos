@@ -652,21 +652,6 @@ def dashboard_pais():
     n_lanches = pd.to_numeric(escuteiro_row.get("Numero de Lanches"), errors="coerce")
 
     st.subheader("💰 Situação financeira")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Saldo atual", _formatar_euro(saldo))
-    with col2:
-        st.metric("Recebimentos", _formatar_euro(recebimentos))
-    with col3:
-        st.metric("Valor dos Lanches", _formatar_euro(valor_lanches))
-    with col4:
-        st.metric("Lanches registados", int(n_lanches) if not pd.isna(n_lanches) else 0)
-
-    col5, col6 = st.columns(2)
-    with col5:
-        st.metric("Doações", _formatar_euro(doacoes))
-    with col6:
-        st.metric("Estornos", _formatar_euro(estornos))
 
     def _to_float(valor) -> float:
         if isinstance(valor, list):
@@ -692,23 +677,76 @@ def dashboard_pais():
         except ValueError:
             return 0.0
 
-    categorias_financeiras = [
-        ("Saldo Lanches", "Vls recebidos lanches", "Vls Estornados Lanches"),
-        ("Saldo Quota Mensal", "Vls recebidos quotas mensal", "Vls Estornados Quotas Mensal"),
-        ("Saldo Quota Anual", "Vls recebidos quotas anual", "Vls Estornados Quotas Anual"),
-    ]
+    saldo_lanches = _to_float(escuteiro_row.get("Saldo Lanches"))
+    recebido_lanches = _to_float(escuteiro_row.get("Vls recebidos lanches"))
+    estornado_lanches = _to_float(escuteiro_row.get("Vls Estornados Lanches"))
 
-    colunas_categoria = st.columns(len(categorias_financeiras))
-    for (label_saldo, campo_receb, campo_estorno), coluna in zip(categorias_financeiras, colunas_categoria):
-        saldo_categoria = _to_float(escuteiro_row.get(label_saldo))
-        recebido_categoria = _to_float(escuteiro_row.get(campo_receb))
-        estornado_categoria = _to_float(escuteiro_row.get(campo_estorno))
-        coluna.metric(
-            label_saldo,
-            _formatar_euro(saldo_categoria),
-            delta=f"Recebido {_formatar_euro(recebido_categoria)} · Estornado {_formatar_euro(estornado_categoria)}",
+    saldo_quota_mensal = _to_float(escuteiro_row.get("Saldo Quota Mensal"))
+    recebido_quota_mensal = _to_float(escuteiro_row.get("Vls recebidos quotas mensal"))
+    estornado_quota_mensal = _to_float(escuteiro_row.get("Vls Estornados Quotas Mensal"))
+
+    saldo_quota_anual = _to_float(escuteiro_row.get("Saldo Quota Anual"))
+    recebido_quota_anual = _to_float(escuteiro_row.get("Vls recebidos quotas anual"))
+    estornado_quota_anual = _to_float(escuteiro_row.get("Vls Estornados Quotas Anual"))
+
+    st.markdown("#### 🥪 Lanches")
+    col_lanches = st.columns(3)
+    with col_lanches[0]:
+        st.metric(
+            "Saldo Lanches",
+            _formatar_euro(saldo_lanches),
+            delta=f"Recebido {_formatar_euro(recebido_lanches)} · Estornado {_formatar_euro(estornado_lanches)}",
             delta_color="off",
         )
+    with col_lanches[1]:
+        st.metric("Recebido em Lanches", _formatar_euro(recebido_lanches))
+    with col_lanches[2]:
+        st.metric("Estornado em Lanches", _formatar_euro(estornado_lanches))
+
+    col_lanches_extra = st.columns(2)
+    with col_lanches_extra[0]:
+        st.metric("Valor dos Lanches", _formatar_euro(valor_lanches))
+    with col_lanches_extra[1]:
+        st.metric("Lanches registados", int(n_lanches) if not pd.isna(n_lanches) else 0)
+
+    st.markdown("#### 🗓️ Quota Mensal")
+    col_mensal = st.columns(3)
+    with col_mensal[0]:
+        st.metric(
+            "Saldo Quota Mensal",
+            _formatar_euro(saldo_quota_mensal),
+            delta=f"Recebido {_formatar_euro(recebido_quota_mensal)} · Estornado {_formatar_euro(estornado_quota_mensal)}",
+            delta_color="off",
+        )
+    with col_mensal[1]:
+        st.metric("Recebido Quota Mensal", _formatar_euro(recebido_quota_mensal))
+    with col_mensal[2]:
+        st.metric("Estornado Quota Mensal", _formatar_euro(estornado_quota_mensal))
+
+    st.markdown("#### 📅 Quota Anual")
+    col_anual = st.columns(3)
+    with col_anual[0]:
+        st.metric(
+            "Saldo Quota Anual",
+            _formatar_euro(saldo_quota_anual),
+            delta=f"Recebido {_formatar_euro(recebido_quota_anual)} · Estornado {_formatar_euro(estornado_quota_anual)}",
+            delta_color="off",
+        )
+    with col_anual[1]:
+        st.metric("Recebido Quota Anual", _formatar_euro(recebido_quota_anual))
+    with col_anual[2]:
+        st.metric("Estornado Quota Anual", _formatar_euro(estornado_quota_anual))
+
+    st.markdown("#### 🧮 Resumo geral")
+    col_global = st.columns(4)
+    with col_global[0]:
+        st.metric("Saldo atual", _formatar_euro(saldo))
+    with col_global[1]:
+        st.metric("Recebimentos totais", _formatar_euro(recebimentos))
+    with col_global[2]:
+        st.metric("Estornos totais", _formatar_euro(estornos))
+    with col_global[3]:
+        st.metric("Doações", _formatar_euro(doacoes))
 
     st.divider()
 
