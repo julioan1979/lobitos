@@ -697,25 +697,25 @@ def dashboard_pais():
     with col_lanches_row[0]:
         st.metric("Lanches registados", int(n_lanches) if not pd.isna(n_lanches) else 0)
     with col_lanches_row[1]:
-        st.metric("Valor dos Lanches", _formatar_euro(valor_lanches))
+        st.metric("Valor Total dos Lanches", _formatar_euro(valor_lanches))
     with col_lanches_row[2]:
-        st.metric("Recebido líquido em Lanches", _formatar_euro(net_lanches))
+        st.metric("Pagamentos Recebidos Lanches", _formatar_euro(net_lanches))
     with col_lanches_row[3]:
         st.metric("Saldo Lanches", _formatar_euro(saldo_lanches))
 
     col_restante = st.columns([1, 1, 1, 1, 1, 1])
     with col_restante[0]:
-        st.metric("Quota Mensal (líquido)", _formatar_euro(recebido_quota_mensal - estornado_quota_mensal))
+        st.metric("Pagamento Quota Mensal", _formatar_euro(recebido_quota_mensal - estornado_quota_mensal))
     with col_restante[1]:
-        st.metric("Saldo Quota Mensal", _formatar_euro(saldo_quota_mensal))
+        st.metric("Posição Quota Mensal", _formatar_euro(saldo_quota_mensal))
     with col_restante[2]:
-        st.metric("Quota Anual (líquido)", _formatar_euro(recebido_quota_anual - estornado_quota_anual))
+        st.metric("Pagamento Quota Anual", _formatar_euro(recebido_quota_anual - estornado_quota_anual))
     with col_restante[3]:
-        st.metric("Saldo Quota Anual", _formatar_euro(saldo_quota_anual))
+        st.metric("Posição Quota Anual", _formatar_euro(saldo_quota_anual))
     with col_restante[4]:
         st.metric("Doações", _formatar_euro(doacoes))
     with col_restante[5]:
-        st.metric("Saldo atual", _formatar_euro(saldo))
+        st.metric("Saldo Geral", _formatar_euro(saldo))
 
     st.divider()
 
