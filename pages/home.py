@@ -691,41 +691,30 @@ def dashboard_pais():
 
     net_lanches = recebido_lanches - estornado_lanches
 
-    st.markdown("#### 🥪 Lanches")
-    col_lanches = st.columns(4)
-    with col_lanches[0]:
+    net_recebimentos = recebimentos - estornos
+
+    col_lanches_row = st.columns([1, 1, 1, 1])
+    with col_lanches_row[0]:
         st.metric("Lanches registados", int(n_lanches) if not pd.isna(n_lanches) else 0)
-    with col_lanches[1]:
+    with col_lanches_row[1]:
         st.metric("Valor dos Lanches", _formatar_euro(valor_lanches))
-    with col_lanches[2]:
+    with col_lanches_row[2]:
         st.metric("Recebido líquido em Lanches", _formatar_euro(net_lanches))
-    with col_lanches[3]:
+    with col_lanches_row[3]:
         st.metric("Saldo Lanches", _formatar_euro(saldo_lanches))
 
-    st.markdown("#### 🗓️ Quota Mensal")
-    net_quota_mensal = recebido_quota_mensal - estornado_quota_mensal
-    col_mensal = st.columns(2)
-    with col_mensal[0]:
-        st.metric("Recebido líquido Quota Mensal", _formatar_euro(net_quota_mensal))
-    with col_mensal[1]:
+    col_restante = st.columns([1, 1, 1, 1, 1, 1])
+    with col_restante[0]:
+        st.metric("Quota Mensal (líquido)", _formatar_euro(recebido_quota_mensal - estornado_quota_mensal))
+    with col_restante[1]:
         st.metric("Saldo Quota Mensal", _formatar_euro(saldo_quota_mensal))
-
-    st.markdown("#### 📅 Quota Anual")
-    net_quota_anual = recebido_quota_anual - estornado_quota_anual
-    col_anual = st.columns(2)
-    with col_anual[0]:
-        st.metric("Recebido líquido Quota Anual", _formatar_euro(net_quota_anual))
-    with col_anual[1]:
+    with col_restante[2]:
+        st.metric("Quota Anual (líquido)", _formatar_euro(recebido_quota_anual - estornado_quota_anual))
+    with col_restante[3]:
         st.metric("Saldo Quota Anual", _formatar_euro(saldo_quota_anual))
-
-    st.markdown("#### 🧮 Resumo geral")
-    net_recebimentos = recebimentos - estornos
-    col_global = st.columns(3)
-    with col_global[0]:
-        st.metric("Recebimentos líquidos", _formatar_euro(net_recebimentos))
-    with col_global[1]:
+    with col_restante[4]:
         st.metric("Doações", _formatar_euro(doacoes))
-    with col_global[2]:
+    with col_restante[5]:
         st.metric("Saldo atual", _formatar_euro(saldo))
 
     st.divider()
