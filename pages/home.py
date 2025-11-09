@@ -593,6 +593,13 @@ def dashboard_pais():
     escuteiro_nome = label_por_id.get(escuteiro_id, "")
     escuteiro_row = df_escuteiros[df_escuteiros["id"] == escuteiro_id].iloc[0]
 
+    def _contem_escuteiro(valor) -> bool:
+        if isinstance(valor, list):
+            return escuteiro_id in valor
+        if pd.isna(valor):
+            return False
+        return valor == escuteiro_id
+
     # 🔘 Barra de Ações
     acoes_pais = mostrar_barra_acoes([
         ("🍞 Marcar Lanche", "btn_marcar_lanche"),
@@ -661,6 +668,147 @@ def dashboard_pais():
     with col6:
         st.metric("Estornos", _formatar_euro(estornos))
 
+    df_recebimentos_bruto = dados.get("Recebimento", pd.DataFrame())
+    df_estornos_bruto = pd.DataFrame()
+    for nome_estorno in [
+        "Estorno de Recebimento",
+        "Estornos de Recebimento",
+        "Estorno Recebimento",
+        "Estorno",
+        "Estornos",
+    ]:
+        candidato = dados.get(nome_estorno)
+        if isinstance(candidato, pd.DataFrame) and not candidato.empty:
+            df_estornos_bruto = candidato
+            break
+
+    def _obter_coluna(df_like: pd.DataFrame, candidatos: list[str]) -> str | None:
+        if not isinstance(df_like, pd.DataFrame):
+            return None
+        for coluna in candidatos:
+            if coluna in df_like.columns:
+                return coluna
+        return None
+
+    campo_rel_receb = _obter_coluna(df_recebimentos_bruto, ["Escuteiros", "Escuteiro"])
+    df_recebimentos_esc = (
+        df_recebimentos_bruto[df_recebimentos_bruto[campo_rel_receb].apply(_contem_escuteiro)].copy()
+        if isinstance(df_recebimentos_bruto, pd.DataFrame)
+        and not df_recebimentos_bruto.empty
+        and campo_rel_receb
+        else pd.DataFrame()
+    )
+
+    campo_rel_estorno = _obter_coluna(
+        df_estornos_bruto, ["Escuteiros", "Escuteiro", "Escuteiro(s)", "Escuteiros Relacionados"]
+    )
+    df_estornos_esc = (
+        df_estornos_bruto[df_estornos_bruto[campo_rel_estorno].apply(_contem_escuteiro)].copy()
+        if isinstance(df_estornos_bruto, pd.DataFrame)
+        and not df_estornos_bruto.empty
+        and campo_rel_estorno
+        else pd.DataFrame()
+    )
+
+    def _normalizar_tags(valor) -> list[str]:
+        if isinstance(valor, list):
+            resultado: list[str] = []
+            for item in valor:
+                resultado.extend(_normalizar_tags(item))
+            return resultado
+        if pd.isna(valor):
+            return []
+        texto = str(valor).strip()
+        if not texto:
+            return []
+        texto = texto.replace(";", ",")
+        return [parte.strip().lower() for parte in texto.split(",") if parte.strip()]
+
+    def _converter_valor_generico(valor) -> float | None:
+        if isinstance(valor, list):
+            total = 0.0
+            tem_valor = False
+            for item in valor:
+                convertido = _converter_valor_generico(item)
+                if convertido is not None:
+                    total += convertido
+                    tem_valor = True
+            return total if tem_valor else None
+        if isinstance(valor, dict):
+            if "value" in valor:
+                return _converter_valor_generico(valor["value"])
+            return None
+        if isinstance(valor, (int, float)):
+            return float(valor)
+        if pd.isna(valor):
+            return None
+        texto = str(valor).strip().strip('"').replace("€", "")
+        if not texto:
+            return None
+        texto = texto.replace(" ", "")
+        if texto.count(",") > 1 and "." not in texto:
+            texto = texto.replace(".", "")
+        if "," in texto and "." in texto:
+            texto = texto.replace(".", "").replace(",", ".")
+        elif "," in texto:
+            texto = texto.replace(",", ".")
+        try:
+            return float(texto)
+        except ValueError:
+            return None
+
+    def _somar_categoria(df_like: pd.DataFrame, campo_tag: str | None, campo_valor: str | None, chaves: set[str]) -> float:
+        if (
+            not isinstance(df_like, pd.DataFrame)
+            or df_like.empty
+            or campo_tag is None
+            or campo_valor is None
+            or campo_tag not in df_like.columns
+            or campo_valor not in df_like.columns
+        ):
+            return 0.0
+        chaves_norm = {chave.lower() for chave in chaves}
+        if not chaves_norm:
+            return 0.0
+        mask = df_like[campo_tag].apply(lambda valor: bool(set(_normalizar_tags(valor)) & chaves_norm))
+        if not mask.any():
+            return 0.0
+        valores = df_like.loc[mask, campo_valor].apply(_converter_valor_generico)
+        valores = pd.to_numeric(valores, errors="coerce").fillna(0.0)
+        return float(valores.sum())
+
+    campo_tag_receb = _obter_coluna(
+        df_recebimentos_esc, ["Categoria", "Tag_Recebimento", "Tag Recebimento", "Tag"]
+    )
+    campo_valor_receb = _obter_coluna(
+        df_recebimentos_esc, ["Valor Recebido", "Valor (€)", "Valor", "Valor Pago"]
+    )
+    campo_tag_estorno = _obter_coluna(
+        df_estornos_esc, ["Categoria", "Tag_Cancelamento", "Tag Cancelamento", "Tag"]
+    )
+    campo_valor_estorno = _obter_coluna(
+        df_estornos_esc, ["Valor Estornado", "Valor Estorno", "Valor (€)", "Valor"]
+    )
+
+    categorias_financeiras = [
+        ("Saldo Lanches", {"lanches"}),
+        ("Saldo Quota Mensal", {"quota mensal", "cota mensal"}),
+        ("Saldo Quota Anual", {"quota anual", "cota anual"}),
+    ]
+
+    if not df_recebimentos_esc.empty or not df_estornos_esc.empty:
+        col_cat1, col_cat2, col_cat3 = st.columns(3)
+        for (label, chaves), coluna in zip(categorias_financeiras, (col_cat1, col_cat2, col_cat3)):
+            total_receb = _somar_categoria(df_recebimentos_esc, campo_tag_receb, campo_valor_receb, chaves)
+            total_estorno = _somar_categoria(df_estornos_esc, campo_tag_estorno, campo_valor_estorno, chaves)
+            saldo_categoria = total_receb - total_estorno
+            coluna.metric(
+                label,
+                _formatar_euro(saldo_categoria),
+                delta=f"Recebido {_formatar_euro(total_receb)} · Estornado {_formatar_euro(total_estorno)}",
+                delta_color="off",
+            )
+
     st.divider()
 
     recipes_map = {}
@@ -675,13 +823,6 @@ def dashboard_pais():
         if pd.isna(valor):
             return ""
         return mapping.get(valor, valor)
-
-    def _contem_escuteiro(valor) -> bool:
-        if isinstance(valor, list):
-            return escuteiro_id in valor
-        if pd.isna(valor):
-            return False
-        return valor == escuteiro_id
 
     pedidos_escuteiro = pd.DataFrame()
     if df_pedidos is not None and not df_pedidos.empty:
