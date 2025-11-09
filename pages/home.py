@@ -1325,22 +1325,6 @@ def dashboard_admin(dados: dict):
             .to_dict()
         )
 
-    tipo_cotas_map: dict[str, str] = {}
-    if df_tipo_cotas is not None and not df_tipo_cotas.empty and "id" in df_tipo_cotas.columns:
-        col_tipo_nome = _first_existing_col(
-            df_tipo_cotas,
-            [
-                "Tipo de Quotas",
-                "Nome",
-                "Name",
-                "Tipo",
-                "Descrição",
-            ],
-        )
-        if col_tipo_nome:
-            serie_map = df_tipo_cotas.set_index("id")[col_tipo_nome].dropna()
-            tipo_cotas_map = {str(idx): str(valor) for idx, valor in serie_map.items()}
-
     def _ensure_checkbox(df_like: pd.DataFrame, coluna: str) -> pd.Series:
         if coluna not in df_like.columns:
             return pd.Series(False, index=df_like.index, dtype=bool)
@@ -1374,6 +1358,23 @@ def dashboard_admin(dados: dict):
             if col_name in df_like.columns:
                 return col_name
         return None
+
+    tipo_cotas_map: dict[str, str] = {}
+    if df_tipo_cotas is not None and not df_tipo_cotas.empty and "id" in df_tipo_cotas.columns:
+        col_tipo_nome = _first_existing_col(
+            df_tipo_cotas,
+            [
+                "Tipo de Quotas",
+                "Tipo de Cotas",
+                "Nome",
+                "Name",
+                "Tipo",
+                "Descrição",
+            ],
+        )
+        if col_tipo_nome:
+            serie_map = df_tipo_cotas.set_index("id")[col_tipo_nome].dropna()
+            tipo_cotas_map = {str(idx): str(valor) for idx, valor in serie_map.items()}
 
     def _find_column_keywords(df_like: pd.DataFrame, keyword_groups: list[tuple[str, ...]]):
         if df_like is None or df_like.empty:
