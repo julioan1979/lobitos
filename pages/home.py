@@ -1528,6 +1528,47 @@ def dashboard_tesoureiro(dados: dict):
     col_metricas[1].metric("Estornado no período", formatar_moeda_euro(total_estornos))
     col_metricas[2].metric("Saldo do período", formatar_moeda_euro(saldo))
 
+    def _pertence_categoria(valor, alvo: str) -> bool:
+        if pd.isna(valor):
+            return False
+        alvo_norm = alvo.strip().lower()
+        if isinstance(valor, str):
+            partes = [parte.strip().lower() for parte in valor.split(",") if parte.strip()]
+            return alvo_norm in partes
+        if isinstance(valor, (list, tuple, set)):
+            return any(_pertence_categoria(item, alvo_norm) for item in valor)
+        return str(valor).strip().lower() == alvo_norm
+
+    def _total_por_categoria(df_referencia: pd.DataFrame, categoria: str) -> float:
+        if df_referencia.empty or "Categoria" not in df_referencia.columns or "Valor (€)" not in df_referencia.columns:
+            return 0.0
+        mask = df_referencia["Categoria"].apply(lambda valor: _pertence_categoria(valor, categoria))
+        if mask.any():
+            return float(df_referencia.loc[mask, "Valor (€)"].sum())
+        return 0.0
+
+    categorias_destacadas = [
+        ("Lanches", "🥪 Lanches"),
+        ("Quota Mensal", "🗓️ Quota Mensal"),
+        ("Quota Anual", "📅 Quota Anual"),
+    ]
+
+    st.markdown("##### Detalhe por categoria")
+    cols_categorias = st.columns(len(categorias_destacadas))
+    for (chave_categoria, label_categoria), coluna in zip(categorias_destacadas, cols_categorias):
+        recebido_categoria = _total_por_categoria(df_rec_periodo, chave_categoria)
+        estornado_categoria = _total_por_categoria(df_estornos_periodo, chave_categoria)
+        saldo_categoria = recebido_categoria - estornado_categoria
+        with coluna:
+            coluna.metric(
+                label_categoria,
+                formatar_moeda_euro(saldo_categoria),
+                delta=(
+                    f"Recebido {formatar_moeda_euro(recebido_categoria)} · "
+                    f"Estornado {formatar_moeda_euro(estornado_categoria)}"
+                ),
+            )
+
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
 
