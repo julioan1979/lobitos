@@ -32,6 +32,9 @@ except locale.Error:
     # fallback para não dar erro no Streamlit Cloud
     locale.setlocale(locale.LC_ALL, "")
 
+AGGRID_THEME = "balham-dark"
+AGGRID_THEME_CLASS = f".ag-theme-{AGGRID_THEME}"
+
 
 
 st.set_page_config(page_title="Portal Escutista", page_icon="🐾", layout="wide")
@@ -1688,7 +1691,7 @@ def _obter_nome_tabela_audit() -> str:
         st.markdown(
             """
             <style>
-            .ag-theme-streamlit .ag-row.recent-update .ag-cell {
+            .ag-theme-balham-dark .ag-row.recent-update .ag-cell {
                 background-color: rgba(255, 200, 0, 0.18) !important;
                 color: #111827 !important;
                 font-weight: 600 !important;
@@ -1740,7 +1743,7 @@ def _obter_nome_tabela_audit() -> str:
             update_mode=GridUpdateMode.NO_UPDATE,
             data_return_mode=DataReturnMode.AS_INPUT,
             allow_unsafe_jscode=True,
-            theme="streamlit",
+            theme=AGGRID_THEME,
             fit_columns_on_grid_load=True,
             height=360,
             key=f"aggrid_recebimentos_{'edit' if modo_edicao_receb else 'view'}",
@@ -1949,7 +1952,7 @@ def _obter_nome_tabela_audit() -> str:
             update_mode=GridUpdateMode.NO_UPDATE,
             data_return_mode=DataReturnMode.AS_INPUT,
             allow_unsafe_jscode=True,
-            theme="streamlit",
+            theme=AGGRID_THEME,
             fit_columns_on_grid_load=True,
             height=320,
             key="aggrid_estornos_recebimento",
