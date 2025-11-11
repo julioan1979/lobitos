@@ -1340,6 +1340,8 @@ def dashboard_tesoureiro(dados: dict):
             return vazio, {}, {}, construir_mapa_nomes_por_id(dados)
 
         colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
+        if "id" in df_rec.columns and "id" not in colunas_uteis:
+            colunas_uteis.append("id")
         colunas_existentes = [col for col in colunas_uteis if col in df_rec.columns]
         if not colunas_existentes:
             vazio = pd.DataFrame(columns=expected_columns)
@@ -1356,6 +1358,11 @@ def dashboard_tesoureiro(dados: dict):
                 "Quem Recebeu?": "Quem Recebeu",
             }
         )
+        if "id" in df_limpo.columns:
+            df_limpo["__record_id"] = df_limpo["id"]
+            df_limpo.drop(columns=["id"], inplace=True)
+        else:
+            df_limpo["__record_id"] = ""
 
         coluna_categoria = escolher_coluna(
             df_rec,
@@ -1453,7 +1460,7 @@ def dashboard_tesoureiro(dados: dict):
             if coluna not in df_limpo.columns:
                 df_limpo[coluna] = ""
 
-        df_limpo = df_limpo[expected_columns]
+        df_limpo = df_limpo[expected_columns + ["__record_id"]]
         return df_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids
 
     def _normalizar_estornos(df_estornos: pd.DataFrame | None) -> pd.DataFrame:
@@ -1484,12 +1491,16 @@ def dashboard_tesoureiro(dados: dict):
                 else:
                     resultado[coluna] = ""
 
-        return resultado[expected_columns]
+        colunas_ordem = expected_columns + ["__record_id"] if "__record_id" in resultado.columns else expected_columns
+        return resultado[colunas_ordem]
 
     def _aplicar_formatacao_display(df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df
         display_df = df.copy()
+        aux_cols = [col for col in display_df.columns if col.startswith("__")]
+        if aux_cols:
+            display_df = display_df.drop(columns=aux_cols)
         if "Valor (€)" in display_df.columns:
             display_df["Valor (€)"] = display_df["Valor (€)"].apply(
                 lambda valor: formatar_moeda_euro(valor) if pd.notna(valor) else ""
@@ -1511,6 +1522,8 @@ def dashboard_tesoureiro(dados: dict):
             "Data": st.column_config.TextColumn("Data", width="small"),
             "Responsável": st.column_config.TextColumn("Responsável", width="medium"),
         }
+        if "Alterado" in display_df.columns:
+            column_config["Alterado"] = st.column_config.TextColumn("Alterado", width="small")
         st.dataframe(
             display_df,
             use_container_width=True,
@@ -1522,6 +1535,45 @@ def dashboard_tesoureiro(dados: dict):
     df_estornos = _normalizar_estornos(
         preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
     )
+
+    def _obter_opcoes_meio_pagamento(df_origem: pd.DataFrame) -> list[str]:
+        cache_key = f"meios_pagamento_{BASE_ID}"
+        if cache_key in st.session_state:
+            opcoes_cache = st.session_state.get(cache_key, [])
+            if isinstance(opcoes_cache, list) and opcoes_cache:
+                return opcoes_cache
+
+        opcoes: list[str] = []
+        try:
+            schema = api.meta.base_schema(BASE_ID)
+            for tabela in schema.get("tables", []):
+                if tabela.get("name") != "Recebimento":
+                    continue
+                for campo in tabela.get("fields", []):
+                    if campo.get("name") == "Meio de Pagamento" and campo.get("type") == "singleSelect":
+                        choices = campo.get("options", {}).get("choices", [])
+                        opcoes = [
+                            str(choice.get("name", "")).strip()
+                            for choice in choices
+                            if str(choice.get("name", "")).strip()
+                        ]
+                        break
+                if opcoes:
+                    break
+        except Exception:
+            opcoes = []
+
+        if not opcoes and isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
+            if "Meio de Pagamento" in df_origem.columns:
+                valores = (
+                    df_origem["Meio de Pagamento"]
+                    .dropna()
+                    .apply(lambda valor: valor[0] if isinstance(valor, list) and valor else valor)
+                )
+                opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
+
+        st.session_state[cache_key] = opcoes
+        return opcoes
 
     periodo_key = "tesouraria_periodo_movimentos"
     hoje = pd.Timestamp.today().date()
@@ -1615,12 +1667,216 @@ def dashboard_tesoureiro(dados: dict):
     saldo = total_recebimentos - total_estornos
 
     st.markdown("#### 🧾 Recebimentos")
+    mensagem_sucesso_receb = st.session_state.pop("recebimentos_success_message", None)
+    avisos_receb = st.session_state.pop("recebimentos_warning_messages", None)
+    if mensagem_sucesso_receb:
+        st.success(mensagem_sucesso_receb)
+    if avisos_receb:
+        for aviso in avisos_receb:
+            st.warning(aviso)
+
+    meios_pagamento_opcoes = _obter_opcoes_meio_pagamento(df_rec_origem)
+    pode_editar_recebimentos = (is_admin or is_tesoureiro) and not df_rec_periodo.empty
+    modo_edicao_receb = False
+    if pode_editar_recebimentos:
+        modo_edicao_receb = st.toggle(
+            "Editar meios de pagamento",
+            value=False,
+            key="toggle_recebimentos_meio_pagamento",
+        )
+        if modo_edicao_receb and not meios_pagamento_opcoes:
+            st.warning("Não foi possível obter as opções de meio de pagamento. Edite diretamente no Airtable.")
+            modo_edicao_receb = False
+
     mensagem_recebimentos = (
         "ℹ️ Não há recebimentos registados."
         if df_rec_origem is None or df_rec_origem.empty
         else "ℹ️ Nenhum recebimento no período selecionado."
     )
-    _renderizar_tabela(df_rec_periodo, mensagem_recebimentos)
+
+    recentes_ids = set(st.session_state.get("recebimentos_recent_ids", []))
+    df_recebimentos_display = df_rec_periodo.copy()
+    if recentes_ids and not df_recebimentos_display.empty:
+        df_recebimentos_display["Alterado"] = df_recebimentos_display["__record_id"].apply(
+            lambda rid: "Alterado" if rid in recentes_ids else ""
+        )
+
+    if pode_editar_recebimentos and modo_edicao_receb and not df_rec_periodo.empty:
+        base_editor = df_rec_periodo.copy()
+        dataset_editor = base_editor.set_index("__record_id") if "__record_id" in base_editor.columns else base_editor
+        colunas_disabled = [col for col in dataset_editor.columns if col != "Meio de Pagamento"]
+
+        with st.form("form_editar_meio_pagamento"):
+            df_editor = st.data_editor(
+                dataset_editor,
+                use_container_width=True,
+                num_rows="fixed",
+                disabled=tuple(colunas_disabled),
+                column_config={
+                    "Meio de Pagamento": st.column_config.SelectboxColumn(
+                        "Meio de Pagamento",
+                        options=meios_pagamento_opcoes,
+                        width="medium",
+                    )
+                },
+                key="data_editor_recebimentos",
+            )
+            gravar = st.form_submit_button("💾 Guardar alterações")
+
+        if gravar:
+            df_editor.index.name = "__record_id"
+            df_editado = df_editor.reset_index()
+            mapa_original = df_rec_periodo.set_index("__record_id")["Meio de Pagamento"]
+
+            alteracoes: list[tuple[str, str, str]] = []
+            for _, linha in df_editado.iterrows():
+                record_id = linha.get("__record_id", "")
+                if not record_id:
+                    continue
+                valor_novo = linha.get("Meio de Pagamento", "")
+                valor_antigo = mapa_original.get(record_id, "")
+                if pd.isna(valor_antigo):
+                    valor_antigo = ""
+                if pd.isna(valor_novo):
+                    valor_novo = ""
+                valor_antigo_str = str(valor_antigo).strip()
+                valor_novo_str = str(valor_novo).strip()
+                if valor_antigo_str != valor_novo_str:
+                    alteracoes.append((record_id, valor_antigo_str, valor_novo_str))
+
+            if not alteracoes:
+                st.info("Não foram detetadas alterações.")
+            else:
+                tabela_receb = api.table(BASE_ID, "Recebimento")
+                tabela_audit = api.table(BASE_ID, "Audit Log")
+                ids_sucesso: list[str] = []
+                erros: list[str] = []
+                utilizador_atual = st.session_state.get("user", {}).get("email", "")
+
+                for record_id, valor_antigo, valor_novo in alteracoes:
+                    try:
+                        tabela_receb.update(record_id, {"Meio de Pagamento": valor_novo})
+                        ids_sucesso.append(record_id)
+                    except Exception as exc:
+                        erros.append(f"{record_id}: {exc}")
+                        continue
+
+                    try:
+                        tabela_audit.create(
+                            {
+                                "Tabela Alterada": "Recebimento",
+                                "ID do Registo": record_id,
+                                "Data da Mudança": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                "Informação Antes": f"Meio de Pagamento: {valor_antigo or '-'}",
+                                "Informação Depois": f"Meio de Pagamento: {valor_novo or '-'}",
+                                "Mudança Resumida (AI)": f"Alterado de {valor_antigo or '-'} para {valor_novo or '-'}",
+                                "Usuário": utilizador_atual or "desconhecido",
+                                "Origem da Mudança": "Streamlit",
+                            }
+                        )
+                    except Exception as exc:
+                        erros.append(f"{record_id} (Audit Log): {exc}")
+
+                    time.sleep(0.2)
+
+                if ids_sucesso:
+                    recentes = set(st.session_state.get("recebimentos_recent_ids", []))
+                    recentes.update(ids_sucesso)
+                    st.session_state["recebimentos_recent_ids"] = list(recentes)
+                    if erros:
+                        st.warning("Algumas alterações foram aplicadas com avisos. Consulte o log para detalhes.")
+                    st.session_state["recebimentos_success_message"] = (
+                        f"{len(ids_sucesso)} recebimento(s) atualizados."
+                    )
+                    atualizar_dados_cache()
+                    st.rerun()
+
+                if erros and not ids_sucesso:
+                    st.error("Não foi possível atualizar os recebimentos.")
+                    for mensagem in erros:
+                        st.error(mensagem)
+    else:
+        _renderizar_tabela(df_recebimentos_display, mensagem_recebimentos)
+
+    df_audit_log = dados.get("Audit Log", pd.DataFrame())
+    if (
+        not df_rec_periodo.empty
+        and isinstance(df_audit_log, pd.DataFrame)
+        and not df_audit_log.empty
+        and "ID do Registo" in df_audit_log.columns
+    ):
+        df_audit_receb = df_audit_log[df_audit_log.get("Tabela Alterada") == "Recebimento"].copy()
+        if not df_audit_receb.empty:
+            if "Data da Mudança" in df_audit_receb.columns:
+                df_audit_receb["Data da Mudança"] = pd.to_datetime(
+                    df_audit_receb["Data da Mudança"], errors="coerce"
+                )
+
+            label_por_registo: dict[str, str] = {}
+            for _, linha in df_rec_periodo.iterrows():
+                rid = linha.get("__record_id", "")
+                if not rid or rid in label_por_registo:
+                    continue
+                escuteiro = str(linha.get("Escuteiro") or "").strip() or "Sem nome"
+                data_linha = linha.get("Data")
+                if isinstance(data_linha, pd.Timestamp):
+                    data_txt = data_linha.strftime("%d/%m/%Y")
+                elif isinstance(data_linha, datetime):
+                    data_txt = data_linha.strftime("%d/%m/%Y")
+                else:
+                    data_txt = ""
+                sufixo = f" · {data_txt}" if data_txt else ""
+                label_por_registo[rid] = f"{escuteiro}{sufixo}"
+
+            opcoes_hist = [rid for rid in df_rec_periodo["__record_id"].dropna().unique().tolist() if rid]
+            if opcoes_hist:
+                col_hist_select, col_hist_button = st.columns([4, 1])
+                with col_hist_select:
+                    registo_hist = st.selectbox(
+                        "Ver histórico de alterações",
+                        options=opcoes_hist,
+                        format_func=lambda rid: label_por_registo.get(rid, rid),
+                        key="historico_recebimentos_select",
+                    )
+
+                with col_hist_button:
+                    ver_hist = st.button("ℹ Histórico", key="historico_recebimentos_button", use_container_width=True)
+
+                if registo_hist and ver_hist:
+                    historico_registo = (
+                        df_audit_receb[df_audit_receb["ID do Registo"] == registo_hist]
+                        .sort_values("Data da Mudança", ascending=False)
+                        .head(3)
+                        .copy()
+                    )
+
+                    def _renderizar_historico() -> None:
+                        if historico_registo.empty:
+                            st.info("Não há registos de histórico para este recebimento.")
+                            return
+                        if "Data da Mudança" in historico_registo.columns:
+                            historico_registo["Data da Mudança"] = historico_registo["Data da Mudança"].dt.strftime(
+                                "%d/%m/%Y %H:%M"
+                            )
+                        colunas_hist = [
+                            coluna
+                            for coluna in [
+                                "Data da Mudança",
+                                "Informação Antes",
+                                "Informação Depois",
+                                "Usuário",
+                                "Origem da Mudança",
+                            ]
+                            if coluna in historico_registo.columns
+                        ]
+                        st.dataframe(historico_registo[colunas_hist], use_container_width=True)
+
+                    if hasattr(st, "popover"):
+                        with st.popover("Histórico de alterações"):
+                            _renderizar_historico()
+                    else:
+                        with st.expander("Histórico de alterações", expanded=True):
+                            _renderizar_historico()
 
     st.markdown("### ↩️ Estornos de Recebimento")
     if df_estornos.empty:
