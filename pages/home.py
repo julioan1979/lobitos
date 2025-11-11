@@ -1525,32 +1525,36 @@ def _obter_opcoes_meio_pagamento(df_origem: pd.DataFrame) -> list[str]:
     if cache_key in st.session_state:
         opcoes_cache = st.session_state.get(cache_key, [])
         if isinstance(opcoes_cache, list) and opcoes_cache:
-                return opcoes_cache
+            return opcoes_cache
 
-        opcoes: list[str] = []
-        try:
-            schema = api.meta.base_schema(BASE_ID)
-            for tabela in schema.get("tables", []):
-                if tabela.get("name") != "Recebimento":
-                    continue
-                for campo in tabela.get("fields", []):
-                    if campo.get("name") == "Meio de Pagamento" and campo.get("type") == "singleSelect":
-                        choices = campo.get("options", {}).get("choices", [])
-                        opcoes = [str(choice.get("name", "")).strip() for choice in choices if str(choice.get("name", "")).strip()]
-                        break
-                if opcoes:
+    opcoes: list[str] = []
+    try:
+        schema = api.meta.base_schema(BASE_ID)
+        for tabela in schema.get("tables", []):
+            if tabela.get("name") != "Recebimento":
+                continue
+            for campo in tabela.get("fields", []):
+                if campo.get("name") == "Meio de Pagamento" and campo.get("type") == "singleSelect":
+                    choices = campo.get("options", {}).get("choices", [])
+                    opcoes = [
+                        str(choice.get("name", "")).strip()
+                        for choice in choices
+                        if str(choice.get("name", "")).strip()
+                    ]
                     break
-        except Exception:
-            opcoes = []
+            if opcoes:
+                break
+    except Exception:
+        opcoes = []
 
-        if not opcoes and isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
-            if "Meio de Pagamento" in df_origem.columns:
-                valores = (
-                    df_origem["Meio de Pagamento"]
-                    .dropna()
-                    .apply(lambda valor: valor[0] if isinstance(valor, list) and valor else valor)
-                )
-                opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
+    if not opcoes and isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
+        if "Meio de Pagamento" in df_origem.columns:
+            valores = (
+                df_origem["Meio de Pagamento"]
+                .dropna()
+                .apply(lambda valor: valor[0] if isinstance(valor, list) and valor else valor)
+            )
+            opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
 
     st.session_state[cache_key] = opcoes
     return opcoes
@@ -1561,123 +1565,125 @@ def _obter_nome_tabela_audit() -> str:
         return "Audit Log"
     return str(nome).strip()
 
-    df_rec_origem = dados.get("Recebimento", pd.DataFrame())
-    df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids = _preparar_recebimentos(dados)
-    df_estornos = _normalizar_estornos(
-        preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
-    )
+df_rec_origem = dados.get("Recebimento", pd.DataFrame())
+df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids = _preparar_recebimentos(dados)
+df_estornos = _normalizar_estornos(
+    preparar_dataframe_estornos(dados, escuteiros_map, permissoes_map, mapa_nomes_ids)
+)
 
-    periodo_key = "tesouraria_periodo_movimentos"
-    hoje = pd.Timestamp.today().date()
-    periodo_padrao: tuple[date, date] = (hoje, hoje)
+periodo_key = "tesouraria_periodo_movimentos"
+hoje = pd.Timestamp.today().date()
+periodo_padrao: tuple[date, date] = (hoje, hoje)
 
-    def _converter_para_date(valor):
-        if isinstance(valor, date):
-            return valor
-        if isinstance(valor, datetime):
-            return valor.date()
-        if isinstance(valor, pd.Timestamp):
-            return valor.date()
-        return None
+def _converter_para_date(valor):
+    if isinstance(valor, date):
+        return valor
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, pd.Timestamp):
+        return valor.date()
+    return None
 
-    def _normalizar_periodo(valor):
-        if isinstance(valor, (tuple, list)):
-            valores = [_converter_para_date(item) for item in valor]
-            valores = [item for item in valores if item is not None]
-        else:
-            item = _converter_para_date(valor)
-            valores = [item] if item is not None else []
+def _normalizar_periodo(valor):
+    if isinstance(valor, (tuple, list)):
+        valores = [_converter_para_date(item) for item in valor]
+        valores = [item for item in valores if item is not None]
+    else:
+        item = _converter_para_date(valor)
+        valores = [item] if item is not None else []
 
-        if len(valores) >= 2:
-            inicio, fim = valores[0], valores[1]
-        elif len(valores) == 1:
-            inicio = fim = valores[0]
-        else:
-            inicio, fim = periodo_padrao
+    if len(valores) >= 2:
+        inicio, fim = valores[0], valores[1]
+    elif len(valores) == 1:
+        inicio = fim = valores[0]
+    else:
+        inicio, fim = periodo_padrao
 
-        if inicio > fim:
-            inicio, fim = fim, inicio
-        return inicio, fim
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    return inicio, fim
 
-    def _periodo_mes_atual(referencia: date) -> tuple[date, date]:
-        primeiro_dia = date(referencia.year, referencia.month, 1)
-        if referencia.month == 12:
-            proximo_mes = date(referencia.year + 1, 1, 1)
-        else:
-            proximo_mes = date(referencia.year, referencia.month + 1, 1)
-        return primeiro_dia, proximo_mes - timedelta(days=1)
+def _periodo_mes_atual(referencia: date) -> tuple[date, date]:
+    primeiro_dia = date(referencia.year, referencia.month, 1)
+    if referencia.month == 12:
+        proximo_mes = date(referencia.year + 1, 1, 1)
+    else:
+        proximo_mes = date(referencia.year, referencia.month + 1, 1)
+    return primeiro_dia, proximo_mes - timedelta(days=1)
 
-    periodo_atual = _normalizar_periodo(st.session_state.get(periodo_key, periodo_padrao))
+periodo_atual = _normalizar_periodo(st.session_state.get(periodo_key, periodo_padrao))
 
-    st.markdown("### 📊 Posição de Caixa")
+st.markdown("### 📊 Posição de Caixa")
 
-    filtro_cols = st.columns([2, 3])
-    novo_periodo: tuple[date, date] | None = None
+filtro_cols = st.columns([2, 3])
+novo_periodo: tuple[date, date] | None = None
 
-    atalhos_periodo = {
-        "Hoje": lambda referencia: (referencia, referencia),
-        "Últimos 3 dias": lambda referencia: (referencia - timedelta(days=2), referencia),
-        "Esta semana": lambda referencia: (
+atalhos_periodo = {
+    "Hoje": lambda referencia: (referencia, referencia),
+    "Últimos 3 dias": lambda referencia: (referencia - timedelta(days=2), referencia),
+    "Esta semana": (
+        lambda referencia: (
             referencia - timedelta(days=referencia.weekday()),
             min(referencia - timedelta(days=referencia.weekday()) + timedelta(days=6), referencia),
-        ),
-        "Este mês": _periodo_mes_atual,
-    }
-
-    with filtro_cols[1]:
-        botoes = st.columns(len(atalhos_periodo))
-        funcao_selecionada = None
-        for (rotulo, funcao_periodo), coluna in zip(atalhos_periodo.items(), botoes):
-            if coluna.button(rotulo, use_container_width=True):
-                funcao_selecionada = funcao_periodo
-        if funcao_selecionada is not None:
-            novo_periodo = funcao_selecionada(hoje)
-
-    valor_inicial = novo_periodo or periodo_atual
-    with filtro_cols[0]:
-        periodo_escolhido = st.date_input(
-            "Intervalo personalizado",
-            value=valor_inicial,
-            format="DD/MM/YYYY",
         )
+    ),
+    "Este mês": _periodo_mes_atual,
+}
 
-    periodo_atual = _normalizar_periodo(novo_periodo if novo_periodo is not None else periodo_escolhido)
-    st.session_state[periodo_key] = periodo_atual
+with filtro_cols[1]:
+    botoes = st.columns(len(atalhos_periodo))
+    funcao_selecionada = None
+    for (rotulo, funcao_periodo), coluna in zip(atalhos_periodo.items(), botoes):
+        if coluna.button(rotulo, use_container_width=True):
+            funcao_selecionada = funcao_periodo
+    if funcao_selecionada is not None:
+        novo_periodo = funcao_selecionada(hoje)
 
-    data_inicio, data_fim = periodo_atual
-    data_inicio_ts = pd.Timestamp(data_inicio)
-    data_fim_ts = pd.Timestamp(data_fim)
+valor_inicial = novo_periodo or periodo_atual
+with filtro_cols[0]:
+    periodo_escolhido = st.date_input(
+        "Intervalo personalizado",
+        value=valor_inicial,
+        format="DD/MM/YYYY",
+    )
 
-    df_rec_periodo = df_rec_limpo[df_rec_limpo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")].copy()
-    df_rec_periodo.sort_values("Data", ascending=False, inplace=True)
+periodo_atual = _normalizar_periodo(novo_periodo if novo_periodo is not None else periodo_escolhido)
+st.session_state[periodo_key] = periodo_atual
 
-    df_estornos_periodo = df_estornos[df_estornos["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")].copy()
-    df_estornos_periodo.sort_values("Data", ascending=False, inplace=True)
+data_inicio, data_fim = periodo_atual
+data_inicio_ts = pd.Timestamp(data_inicio)
+data_fim_ts = pd.Timestamp(data_fim)
 
-    total_recebimentos = df_rec_periodo["Valor (€)"].sum()
-    total_estornos = df_estornos_periodo["Valor (€)"].sum()
-    saldo = total_recebimentos - total_estornos
+df_rec_periodo = df_rec_limpo[df_rec_limpo["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")].copy()
+df_rec_periodo.sort_values("Data", ascending=False, inplace=True)
 
-    st.markdown("#### 🧾 Recebimentos")
-    mensagem_sucesso_receb = st.session_state.pop("recebimentos_success_message", None)
-    avisos_receb = st.session_state.pop("recebimentos_warning_messages", None)
-    if mensagem_sucesso_receb:
-        st.success(mensagem_sucesso_receb)
-    if avisos_receb:
-        for aviso in avisos_receb:
-            st.warning(aviso)
-    meios_pagamento_opcoes = _obter_opcoes_meio_pagamento(df_rec_origem)
-    pode_editar_recebimentos = (is_admin or is_tesoureiro) and not df_rec_periodo.empty
-    modo_edicao_receb = False
-    if pode_editar_recebimentos:
-        modo_edicao_receb = st.toggle(
-            "Editar meios de pagamento",
-            value=False,
-            key="toggle_recebimentos_meio_pagamento",
-        )
-        if modo_edicao_receb and not meios_pagamento_opcoes:
-            st.warning("Não foi possível obter as opções de meio de pagamento. Edite diretamente no Airtable.")
-            modo_edicao_receb = False
+df_estornos_periodo = df_estornos[df_estornos["Data"].between(data_inicio_ts, data_fim_ts, inclusive="both")].copy()
+df_estornos_periodo.sort_values("Data", ascending=False, inplace=True)
+
+total_recebimentos = df_rec_periodo["Valor (€)"].sum()
+total_estornos = df_estornos_periodo["Valor (€)"].sum()
+saldo = total_recebimentos - total_estornos
+
+st.markdown("#### 🧾 Recebimentos")
+mensagem_sucesso_receb = st.session_state.pop("recebimentos_success_message", None)
+avisos_receb = st.session_state.pop("recebimentos_warning_messages", None)
+if mensagem_sucesso_receb:
+    st.success(mensagem_sucesso_receb)
+if avisos_receb:
+    for aviso in avisos_receb:
+        st.warning(aviso)
+meios_pagamento_opcoes = _obter_opcoes_meio_pagamento(df_rec_origem)
+pode_editar_recebimentos = (is_admin or is_tesoureiro) and not df_rec_periodo.empty
+modo_edicao_receb = False
+if pode_editar_recebimentos:
+    modo_edicao_receb = st.toggle(
+        "Editar meios de pagamento",
+        value=False,
+        key="toggle_recebimentos_meio_pagamento",
+    )
+    if modo_edicao_receb and not meios_pagamento_opcoes:
+        st.warning("Não foi possível obter as opções de meio de pagamento. Edite diretamente no Airtable.")
+        modo_edicao_receb = False
 
     mensagem_recebimentos = (
         "ℹ️ Não há recebimentos registados."
