@@ -1509,7 +1509,12 @@ def dashboard_tesoureiro(dados: dict):
             display_df["Data"] = pd.to_datetime(display_df["Data"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
         return display_df
 
-    def _renderizar_tabela(df_base: pd.DataFrame, mensagem_vazio: str) -> None:
+    def _renderizar_tabela(
+        df_base: pd.DataFrame,
+        mensagem_vazio: str,
+        *,
+        highlight_ids: set[str] | None = None,
+    ) -> None:
         if df_base.empty:
             st.info(mensagem_vazio)
             return
@@ -1524,11 +1529,30 @@ def dashboard_tesoureiro(dados: dict):
         }
         if "Alterado" in display_df.columns:
             column_config["Alterado"] = st.column_config.TextColumn("Alterado", width="small")
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            column_config={col: cfg for col, cfg in column_config.items() if col in display_df.columns},
-        )
+        if highlight_ids:
+            highlight_ids = {str(item) for item in highlight_ids if item}
+
+            def _highlight_row(row: pd.Series) -> list[str]:
+                try:
+                    record_id = str(df_base.iloc[row.name].get("__record_id", "")).strip()
+                except Exception:
+                    record_id = ""
+                if record_id and record_id in highlight_ids:
+                    return ["background-color: rgba(255, 200, 0, 0.12)"] * len(row)
+                return [""] * len(row)
+
+            styled_df = display_df.style.apply(_highlight_row, axis=1)
+            st.dataframe(
+                styled_df,
+                use_container_width=True,
+                column_config={col: cfg for col, cfg in column_config.items() if col in display_df.columns},
+            )
+        else:
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                column_config={col: cfg for col, cfg in column_config.items() if col in display_df.columns},
+            )
 
     def _obter_opcoes_meio_pagamento(df_origem: pd.DataFrame) -> list[str]:
         cache_key = f"meios_pagamento_{BASE_ID}"
@@ -1663,6 +1687,13 @@ def dashboard_tesoureiro(dados: dict):
     saldo = total_recebimentos - total_estornos
 
     st.markdown("#### 🧾 Recebimentos")
+    mensagem_sucesso_receb = st.session_state.pop("recebimentos_success_message", None)
+    avisos_receb = st.session_state.pop("recebimentos_warning_messages", None)
+    if mensagem_sucesso_receb:
+        st.success(mensagem_sucesso_receb)
+    if avisos_receb:
+        for aviso in avisos_receb:
+            st.warning(aviso)
     meios_pagamento_opcoes = _obter_opcoes_meio_pagamento(df_rec_origem)
     pode_editar_recebimentos = (is_admin or is_tesoureiro) and not df_rec_periodo.empty
     modo_edicao_receb = False
@@ -1677,6 +1708,21 @@ def dashboard_tesoureiro(dados: dict):
             modo_edicao_receb = False
 
     if pode_editar_recebimentos and modo_edicao_receb:
+        st.markdown(
+            """
+            <style>
+            [data-testid="stDataEditor"] select,
+            [data-testid="stDataEditor"] option {
+                background-color: rgba(40, 44, 52, 0.9) !important;
+                color: var(--text-color) !important;
+            }
+            [data-testid="stDataEditor"] select:focus {
+                outline: 1px solid rgba(255, 200, 0, 0.6) !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
         base_editor = df_rec_periodo.copy()
         dataset_editor = base_editor.set_index("__record_id")
         coluna_alterado = "Alterado"
@@ -1763,10 +1809,12 @@ def dashboard_tesoureiro(dados: dict):
                     recentes = set(st.session_state.get("recebimentos_recent_ids", []))
                     recentes.update(ids_sucesso)
                     st.session_state["recebimentos_recent_ids"] = list(recentes)
+                    st.session_state["recebimentos_success_message"] = (
+                        f"{len(ids_sucesso)} recebimento(s) atualizados."
+                    )
                     if erros:
-                        st.warning("Algumas alterações foram aplicadas com avisos. Consulte o log para detalhes.")
+                        st.session_state["recebimentos_warning_messages"] = erros
                     atualizar_dados_cache()
-                    st.success(f"{len(ids_sucesso)} recebimento(s) atualizados.")
                     st.rerun()
 
                 if erros and not ids_sucesso:
@@ -1786,7 +1834,11 @@ def dashboard_tesoureiro(dados: dict):
         if df_rec_origem is None or df_rec_origem.empty
         else "ℹ️ Nenhum recebimento no período selecionado."
     )
-    _renderizar_tabela(df_recebimentos_display, mensagem_recebimentos)
+    _renderizar_tabela(
+        df_recebimentos_display,
+        mensagem_recebimentos,
+        highlight_ids=recentes_ids if recentes_ids else None,
+    )
 
     df_audit_log = dados.get("Audit Log", pd.DataFrame())
     if (
