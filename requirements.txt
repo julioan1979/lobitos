@@ -3,3 +3,4 @@ pandas>=2.2.2
 pyairtable>=2.2.0
 toml>=0.10.2
 matplotlib
+streamlit-aggrid>=1.0.4

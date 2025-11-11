@@ -13,7 +13,15 @@ import time
 from datetime import date, datetime, timedelta
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
-from airtable_config import context_labels, current_context, get_airtable_credentials, resolve_form_url
+import json
+from st_aggrid import AgGrid, DataReturnMode, GridOptionsBuilder, GridUpdateMode, JsCode
+from airtable_config import (
+    context_labels,
+    context_extra,
+    current_context,
+    get_airtable_credentials,
+    resolve_form_url,
+)
 from components.banner_convites import mostrar_convites
 
 import locale
@@ -1494,71 +1502,26 @@ def dashboard_tesoureiro(dados: dict):
         colunas_ordem = expected_columns + ["__record_id"] if "__record_id" in resultado.columns else expected_columns
         return resultado[colunas_ordem]
 
-    def _aplicar_formatacao_display(df: pd.DataFrame) -> pd.DataFrame:
+    def _formatar_dataframe_display(df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
-            return df
+            return df.copy()
         display_df = df.copy()
-        aux_cols = [col for col in display_df.columns if col.startswith("__")]
-        if aux_cols:
-            display_df = display_df.drop(columns=aux_cols)
         if "Valor (€)" in display_df.columns:
             display_df["Valor (€)"] = display_df["Valor (€)"].apply(
                 lambda valor: formatar_moeda_euro(valor) if pd.notna(valor) else ""
             )
         if "Data" in display_df.columns:
             display_df["Data"] = pd.to_datetime(display_df["Data"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+        for coluna in ("Escuteiro", "Categoria", "Meio de Pagamento", "Responsável"):
+            if coluna in display_df.columns:
+                display_df[coluna] = display_df[coluna].fillna("")
         return display_df
 
-    def _renderizar_tabela(
-        df_base: pd.DataFrame,
-        mensagem_vazio: str,
-        *,
-        highlight_ids: set[str] | None = None,
-    ) -> None:
-        if df_base.empty:
-            st.info(mensagem_vazio)
-            return
-        display_df = _aplicar_formatacao_display(df_base)
-        column_config = {
-            "Escuteiro": st.column_config.TextColumn("Escuteiro", width="medium"),
-            "Valor (€)": st.column_config.TextColumn("Valor (€)", width="small"),
-            "Categoria": st.column_config.TextColumn("Categoria", width="medium"),
-            "Meio de Pagamento": st.column_config.TextColumn("Meio de Pagamento", width="medium"),
-            "Data": st.column_config.TextColumn("Data", width="small"),
-            "Responsável": st.column_config.TextColumn("Responsável", width="medium"),
-        }
-        if "Alterado" in display_df.columns:
-            column_config["Alterado"] = st.column_config.TextColumn("Alterado", width="small")
-        if highlight_ids:
-            highlight_ids = {str(item) for item in highlight_ids if item}
-
-            def _highlight_row(row: pd.Series) -> list[str]:
-                try:
-                    record_id = str(df_base.iloc[row.name].get("__record_id", "")).strip()
-                except Exception:
-                    record_id = ""
-                if record_id and record_id in highlight_ids:
-                    return ["background-color: rgba(255, 200, 0, 0.12)"] * len(row)
-                return [""] * len(row)
-
-            styled_df = display_df.style.apply(_highlight_row, axis=1)
-            st.dataframe(
-                styled_df,
-                use_container_width=True,
-                column_config={col: cfg for col, cfg in column_config.items() if col in display_df.columns},
-            )
-        else:
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                column_config={col: cfg for col, cfg in column_config.items() if col in display_df.columns},
-            )
-
-    def _obter_opcoes_meio_pagamento(df_origem: pd.DataFrame) -> list[str]:
-        cache_key = f"meios_pagamento_{BASE_ID}"
-        if cache_key in st.session_state:
-            opcoes_cache = st.session_state.get(cache_key, [])
-            if isinstance(opcoes_cache, list) and opcoes_cache:
+def _obter_opcoes_meio_pagamento(df_origem: pd.DataFrame) -> list[str]:
+    cache_key = f"meios_pagamento_{BASE_ID}"
+    if cache_key in st.session_state:
+        opcoes_cache = st.session_state.get(cache_key, [])
+        if isinstance(opcoes_cache, list) and opcoes_cache:
                 return opcoes_cache
 
         opcoes: list[str] = []
@@ -1586,8 +1549,14 @@ def dashboard_tesoureiro(dados: dict):
                 )
                 opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
 
-        st.session_state[cache_key] = opcoes
-        return opcoes
+    st.session_state[cache_key] = opcoes
+    return opcoes
+
+def _obter_nome_tabela_audit() -> str:
+    nome = context_extra("AUDIT_LOG_TABLE", "Audit Log")
+    if not nome or not str(nome).strip():
+        return "Audit Log"
+    return str(nome).strip()
 
     df_rec_origem = dados.get("Recebimento", pd.DataFrame())
     df_rec_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids = _preparar_recebimentos(dados)
@@ -1707,165 +1676,178 @@ def dashboard_tesoureiro(dados: dict):
             st.warning("Não foi possível obter as opções de meio de pagamento. Edite diretamente no Airtable.")
             modo_edicao_receb = False
 
-    if pode_editar_recebimentos and modo_edicao_receb:
-        st.markdown(
-            """
-            <style>
-            [data-testid="stDataEditor"] div[role="row"] > div:nth-child(5) {
-                background-color: #fefce8 !important;
-                color: #111827 !important;
-            }
-            [data-testid="stDataEditor"] div[role="row"] > div:nth-child(5) * {
-                color: #111827 !important;
-            }
-            [data-testid="stDataEditor"] select,
-            div[data-baseweb="select"] > div {
-                background-color: #ffffff !important;
-                color: #111827 !important;
-                border: 2px solid #2563eb !important;
-                border-radius: 6px !important;
-                font-weight: 600 !important;
-                padding: 2px 6px !important;
-            }
-            [data-testid="stDataEditor"] select:focus,
-            div[data-baseweb="select"] > div:focus-within {
-                outline: 2px solid #38bdf8 !important;
-                box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35) !important;
-            }
-            div[data-baseweb="popover"] {
-                background-color: #ffffff !important;
-                color: #111827 !important;
-                border: 1px solid #2563eb !important;
-            }
-            div[data-baseweb="popover"] [role="option"] {
-                background-color: #ffffff !important;
-                color: #111827 !important;
-            }
-            div[data-baseweb="popover"] [role="option"][aria-selected="true"],
-            div[data-baseweb="popover"] [role="option"]:hover {
-                background-color: #bfdbfe !important;
-                color: #111827 !important;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        base_editor = df_rec_periodo.copy()
-        dataset_editor = base_editor.set_index("__record_id")
-        coluna_alterado = "Alterado"
-        if coluna_alterado in dataset_editor.columns:
-            dataset_editor = dataset_editor.drop(columns=[coluna_alterado])
-
-        colunas_disabled = [col for col in dataset_editor.columns if col != "Meio de Pagamento"]
-        column_config_editor = {
-            "Meio de Pagamento": st.column_config.SelectboxColumn(
-                "Meio de Pagamento",
-                options=meios_pagamento_opcoes,
-                width="medium",
-            ),
-        }
-
-        with st.form("form_editar_meio_pagamento"):
-            df_editor = st.data_editor(
-                dataset_editor,
-                use_container_width=True,
-                num_rows="fixed",
-                disabled=tuple(colunas_disabled),
-                column_config=column_config_editor,
-                key="data_editor_recebimentos",
-            )
-            gravar = st.form_submit_button("💾 Guardar alterações")
-
-        if gravar:
-            df_editor.index.name = "__record_id"
-            df_editado = df_editor.reset_index()
-            mapa_original = df_rec_periodo.set_index("__record_id")["Meio de Pagamento"]
-
-            alteracoes: list[tuple[str, str, str]] = []
-            for _, linha in df_editado.iterrows():
-                record_id = linha.get("__record_id", "")
-                if not record_id:
-                    continue
-                valor_novo = linha.get("Meio de Pagamento", "")
-                valor_antigo = mapa_original.get(record_id, "")
-                if pd.isna(valor_antigo):
-                    valor_antigo = ""
-                if pd.isna(valor_novo):
-                    valor_novo = ""
-                valor_antigo_str = str(valor_antigo).strip()
-                valor_novo_str = str(valor_novo).strip()
-                if valor_antigo_str != valor_novo_str:
-                    alteracoes.append((record_id, valor_antigo_str, valor_novo_str))
-
-            if not alteracoes:
-                st.info("Não foram detetadas alterações.")
-            else:
-                tabela_receb = api.table(BASE_ID, "Recebimento")
-                tabela_audit = api.table(BASE_ID, "Audit Log")
-                ids_sucesso: list[str] = []
-                erros: list[str] = []
-                utilizador_atual = st.session_state.get("user", {}).get("email", "")
-
-                for record_id, valor_antigo, valor_novo in alteracoes:
-                    try:
-                        tabela_receb.update(record_id, {"Meio de Pagamento": valor_novo})
-                        ids_sucesso.append(record_id)
-                    except Exception as exc:
-                        erros.append(f"{record_id}: {exc}")
-                        continue
-
-                    try:
-                        tabela_audit.create(
-                            {
-                                "Tabela Alterada": "Recebimento",
-                                "ID do Registo": record_id,
-                                "Data da Mudança": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                "Informação Antes": f"Meio de Pagamento: {valor_antigo or '-'}",
-                                "Informação Depois": f"Meio de Pagamento: {valor_novo or '-'}",
-                                "Mudança Resumida (AI)": f"Alterado de {valor_antigo or '-'} para {valor_novo or '-'}",
-                                "Usuário": utilizador_atual or "desconhecido",
-                                "Origem da Mudança": "Streamlit",
-                            }
-                        )
-                    except Exception as exc:
-                        erros.append(f"{record_id} (Audit Log): {exc}")
-
-                    time.sleep(0.2)
-
-                if ids_sucesso:
-                    recentes = set(st.session_state.get("recebimentos_recent_ids", []))
-                    recentes.update(ids_sucesso)
-                    st.session_state["recebimentos_recent_ids"] = list(recentes)
-                    st.session_state["recebimentos_success_message"] = (
-                        f"{len(ids_sucesso)} recebimento(s) atualizados."
-                    )
-                    if erros:
-                        st.session_state["recebimentos_warning_messages"] = erros
-                    atualizar_dados_cache()
-                    st.rerun()
-
-                if erros and not ids_sucesso:
-                    st.error("Não foi possível atualizar os recebimentos.")
-                    for mensagem in erros:
-                        st.error(mensagem)
-
-    recentes_ids = set(st.session_state.get("recebimentos_recent_ids", []))
-    df_recebimentos_display = df_rec_periodo.copy()
-    if recentes_ids and not df_recebimentos_display.empty:
-        df_recebimentos_display["Alterado"] = df_recebimentos_display["__record_id"].apply(
-            lambda rid: "Alterado" if rid in recentes_ids else ""
-        )
-
     mensagem_recebimentos = (
         "ℹ️ Não há recebimentos registados."
         if df_rec_origem is None or df_rec_origem.empty
         else "ℹ️ Nenhum recebimento no período selecionado."
     )
-    _renderizar_tabela(
-        df_recebimentos_display,
-        mensagem_recebimentos,
-        highlight_ids=recentes_ids if recentes_ids else None,
-    )
+
+    df_grid_recebimentos = _formatar_dataframe_display(df_rec_periodo)
+    recentes_ids = set(st.session_state.get("recebimentos_recent_ids", []))
+    if recentes_ids:
+        st.markdown(
+            """
+            <style>
+            .ag-theme-streamlit .ag-row.recent-update .ag-cell {
+                background-color: rgba(255, 200, 0, 0.18) !important;
+                color: #111827 !important;
+                font-weight: 600 !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if df_grid_recebimentos.empty:
+        st.info(mensagem_recebimentos)
+    else:
+        df_grid_recebimentos = df_grid_recebimentos.copy()
+        if "__record_id" not in df_grid_recebimentos.columns and "__record_id" in df_rec_periodo.columns:
+            df_grid_recebimentos["__record_id"] = df_rec_periodo["__record_id"]
+
+        gb_receb = GridOptionsBuilder.from_dataframe(df_grid_recebimentos)
+        gb_receb.configure_default_column(resizable=True, sortable=True, filter=True)
+        gb_receb.configure_column("__record_id", header_name="ID", hide=True)
+        gb_receb.configure_column("Valor (€)", width=120)
+        gb_receb.configure_column("Data", width=130)
+        gb_receb.configure_column("Categoria", width=160)
+        gb_receb.configure_column("Responsável", width=200)
+
+        meio_cell_style = JsCode(
+            "function(params) {return {backgroundColor: '#fef3c7', color: '#111827', fontWeight: '600'};}"
+        )
+        gb_receb.configure_column(
+            "Meio de Pagamento",
+            editable=pode_editar_recebimentos and modo_edicao_receb,
+            cellEditor="agSelectCellEditor",
+            cellEditorParams={"values": meios_pagamento_opcoes},
+            cellStyle=meio_cell_style,
+            width=160,
+        )
+
+        if recentes_ids:
+            gb_receb.configure_grid_options(
+                rowClassRules={
+                    "recent-update": JsCode(
+                        f"function(params) {{ return {json.dumps(list(recentes_ids))}.includes(params.data.__record_id); }}"
+                    )
+                }
+            )
+
+        grid_recebimentos = AgGrid(
+            df_grid_recebimentos,
+            gridOptions=gb_receb.build(),
+            update_mode=GridUpdateMode.NO_UPDATE,
+            data_return_mode=DataReturnMode.AS_INPUT,
+            allow_unsafe_jscode=True,
+            theme="streamlit",
+            fit_columns_on_grid_load=True,
+            height=360,
+            key=f"aggrid_recebimentos_{'edit' if modo_edicao_receb else 'view'}",
+        )
+
+        if pode_editar_recebimentos and modo_edicao_receb:
+            if st.button("💾 Guardar alterações", key="guardar_recebimentos"):
+                df_editado = pd.DataFrame(grid_recebimentos["data"])
+                if df_editado.empty or "__record_id" not in df_editado.columns:
+                    st.info("Não foram detetadas alterações.")
+                else:
+                    mapa_original = df_rec_periodo.set_index("__record_id")["Meio de Pagamento"]
+                    alteracoes: list[tuple[str, str, str]] = []
+                    for _, linha in df_editado.iterrows():
+                        record_id = str(linha.get("__record_id", "")).strip()
+                        if not record_id:
+                            continue
+                        valor_novo = str(linha.get("Meio de Pagamento", "") or "").strip()
+                        valor_antigo = str(mapa_original.get(record_id, "") or "").strip()
+                        if valor_antigo != valor_novo:
+                            alteracoes.append((record_id, valor_antigo, valor_novo))
+
+                    if not alteracoes:
+                        st.info("Não foram detetadas alterações.")
+                    else:
+                        tabela_receb = api.table(BASE_ID, "Recebimento")
+                        nome_tabela_audit = st.session_state.get("audit_log_table_name")
+                        if not nome_tabela_audit:
+                            nome_tabela_audit = _obter_nome_tabela_audit()
+                            st.session_state["audit_log_table_name"] = nome_tabela_audit
+                        audit_indisponivel = st.session_state.get("audit_log_indisponivel", False)
+                        tabela_audit = None
+                        if not audit_indisponivel:
+                            try:
+                                tabela_audit = api.table(BASE_ID, nome_tabela_audit)
+                            except Exception:
+                                tabela_audit = None
+
+                        ids_sucesso: list[str] = []
+                        erros: list[str] = []
+                        aviso_audit: str | None = (
+                            st.session_state.get("audit_log_warning_message") if audit_indisponivel else None
+                        )
+                        utilizador_atual = st.session_state.get("user", {}).get("email", "")
+
+                        for record_id, valor_antigo, valor_novo in alteracoes:
+                            try:
+                                tabela_receb.update(record_id, {"Meio de Pagamento": valor_novo})
+                                ids_sucesso.append(record_id)
+                            except Exception as exc:
+                                erros.append(f"{record_id}: {exc}")
+                                continue
+
+                            if tabela_audit is not None:
+                                try:
+                                    tabela_audit.create(
+                                        {
+                                            "Tabela Alterada": "Recebimento",
+                                            "ID do Registo": record_id,
+                                            "Data da Mudança": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                            "Informação Antes": f"Meio de Pagamento: {valor_antigo or '-'}",
+                                            "Informação Depois": f"Meio de Pagamento: {valor_novo or '-'}",
+                                            "Mudança Resumida (AI)": f"Alterado de {valor_antigo or '-'} para {valor_novo or '-'}",
+                                            "Usuário": utilizador_atual or "desconhecido",
+                                            "Origem da Mudança": "Streamlit",
+                                        }
+                                    )
+                                except Exception as exc:
+                                    mensagem_exc = str(exc)
+                                    if (
+                                        "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND" in mensagem_exc
+                                        or "Forbidden" in mensagem_exc
+                                    ):
+                                        aviso_audit = (
+                                            f"Os recebimentos foram atualizados, mas não foi possível registar no Audit Log "
+                                            f"(tabela '{nome_tabela_audit}'). Verifique o nome da tabela e as permissões do token."
+                                        )
+                                        st.session_state["audit_log_indisponivel"] = True
+                                        st.session_state["audit_log_warning_message"] = aviso_audit
+                                        tabela_audit = None
+                                    else:
+                                        aviso_audit = f"Falha ao registar no Audit Log: {mensagem_exc}"
+                                        st.session_state["audit_log_warning_message"] = aviso_audit
+
+                            time.sleep(0.2)
+
+                        if ids_sucesso:
+                            recentes = set(st.session_state.get("recebimentos_recent_ids", []))
+                            recentes.update(ids_sucesso)
+                            st.session_state["recebimentos_recent_ids"] = list(recentes)
+                            st.session_state["recebimentos_success_message"] = (
+                                f"{len(ids_sucesso)} recebimento(s) atualizados."
+                            )
+                            mensagens_warn: list[str] = []
+                            if erros:
+                                mensagens_warn.extend(erros)
+                            if aviso_audit and aviso_audit not in mensagens_warn:
+                                mensagens_warn.append(aviso_audit)
+                            if mensagens_warn:
+                                st.session_state["recebimentos_warning_messages"] = mensagens_warn
+                            atualizar_dados_cache()
+                            st.rerun()
+
+                        if erros and not ids_sucesso:
+                            st.error("Não foi possível atualizar os recebimentos.")
+                            for mensagem in erros:
+                                st.error(mensagem)
 
     df_audit_log = dados.get("Audit Log", pd.DataFrame())
     if (
@@ -1948,10 +1930,30 @@ def dashboard_tesoureiro(dados: dict):
                             _renderizar_historico()
 
     st.markdown("### ↩️ Estornos de Recebimento")
-    if df_estornos.empty:
-        st.info("ℹ️ Nenhum estorno registado.")
+    if df_estornos_periodo.empty:
+        st.info("ℹ️ Nenhum estorno no período selecionado.")
     else:
-        _renderizar_tabela(df_estornos_periodo, "ℹ️ Nenhum estorno no período selecionado.")
+        df_estornos_grid = _formatar_dataframe_display(df_estornos_periodo)
+        gb_estornos = GridOptionsBuilder.from_dataframe(df_estornos_grid)
+        gb_estornos.configure_default_column(resizable=True, sortable=True, filter=True)
+        if "__record_id" in df_estornos_grid.columns:
+            gb_estornos.configure_column("__record_id", header_name="ID", hide=True)
+        gb_estornos.configure_column("Valor (€)", width=120)
+        gb_estornos.configure_column("Data", width=130)
+        gb_estornos.configure_column("Categoria", width=160)
+        gb_estornos.configure_column("Responsável", width=200)
+
+        AgGrid(
+            df_estornos_grid,
+            gridOptions=gb_estornos.build(),
+            update_mode=GridUpdateMode.NO_UPDATE,
+            data_return_mode=DataReturnMode.AS_INPUT,
+            allow_unsafe_jscode=True,
+            theme="streamlit",
+            fit_columns_on_grid_load=True,
+            height=320,
+            key="aggrid_estornos_recebimento",
+        )
 
     st.caption(
         f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
