@@ -1711,13 +1711,20 @@ def dashboard_tesoureiro(dados: dict):
         st.markdown(
             """
             <style>
-            [data-testid="stDataEditor"] select,
-            [data-testid="stDataEditor"] option {
-                background-color: rgba(40, 44, 52, 0.9) !important;
-                color: var(--text-color) !important;
+            [data-testid="stDataEditor"] select {
+                background-color: #fef3c7 !important;
+                color: #1f2937 !important;
+                border: 1px solid #f59e0b !important;
+                border-radius: 4px !important;
+                font-weight: 600 !important;
             }
             [data-testid="stDataEditor"] select:focus {
-                outline: 1px solid rgba(255, 200, 0, 0.6) !important;
+                outline: 2px solid #f97316 !important;
+                box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.35) !important;
+            }
+            [data-testid="stDataEditor"] option {
+                background-color: #111827 !important;
+                color: #f9fafb !important;
             }
             </style>
             """,
