@@ -1341,138 +1341,133 @@ def dashboard_tesoureiro(dados: dict):
     st.divider()
     st.markdown("### 🧾 Recebimentos")
 
-    def _preparar_recebimentos(dados: dict) -> tuple[pd.DataFrame, dict[str, str], dict[str, str], dict[str, str]]:
-        df_rec = dados.get("Recebimento", pd.DataFrame())
-        expected_columns = ["Escuteiro", "Valor (€)", "Categoria", "Meio de Pagamento", "Data", "Responsável"]
-        if df_rec is None or df_rec.empty:
-            vazio = pd.DataFrame(columns=expected_columns)
-            vazio["Valor (€)"] = pd.Series(dtype="float64")
-            vazio["Data"] = pd.Series(dtype="datetime64[ns]")
-            return vazio, {}, {}, construir_mapa_nomes_por_id(dados)
+def _preparar_recebimentos(dados: dict) -> tuple[pd.DataFrame, dict[str, str], dict[str, str], dict[str, str]]:
+    df_rec = dados.get("Recebimento", pd.DataFrame())
+    expected_columns = ["Escuteiro", "Valor (€)", "Categoria", "Meio de Pagamento", "Data", "Responsável"]
+    if df_rec is None or df_rec.empty:
+        vazio = pd.DataFrame(columns=expected_columns)
+        vazio["Valor (€)"] = pd.Series(dtype="float64")
+        vazio["Data"] = pd.Series(dtype="datetime64[ns]")
+        return vazio, {}, {}, construir_mapa_nomes_por_id(dados)
 
-        colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
-        if "id" in df_rec.columns and "id" not in colunas_uteis:
-            colunas_uteis.append("id")
-        colunas_existentes = [col for col in colunas_uteis if col in df_rec.columns]
-        if not colunas_existentes:
-            vazio = pd.DataFrame(columns=expected_columns)
-            vazio["Valor (€)"] = pd.Series(dtype="float64")
-            vazio["Data"] = pd.Series(dtype="datetime64[ns]")
-            return vazio, {}, {}, construir_mapa_nomes_por_id(dados)
+    colunas_uteis = ["Escuteiros", "Valor Recebido", "Meio de Pagamento", "Date", "Quem Recebeu?"]
+    if "id" in df_rec.columns and "id" not in colunas_uteis:
+        colunas_uteis.append("id")
+    colunas_existentes = [col for col in colunas_uteis if col in df_rec.columns]
+    if not colunas_existentes:
+        vazio = pd.DataFrame(columns=expected_columns)
+        vazio["Valor (€)"] = pd.Series(dtype="float64")
+        vazio["Data"] = pd.Series(dtype="datetime64[ns]")
+        return vazio, {}, {}, construir_mapa_nomes_por_id(dados)
 
-        df_limpo = df_rec[colunas_existentes].copy().rename(
-            columns={
-                "Escuteiros": "Escuteiro",
-                "Valor Recebido": "Valor (€)",
-                "Meio de Pagamento": "Meio de Pagamento",
-                "Date": "Data",
-                "Quem Recebeu?": "Quem Recebeu",
-            }
-        )
-        if "id" in df_limpo.columns:
-            df_limpo["__record_id"] = df_limpo["id"]
-            df_limpo.drop(columns=["id"], inplace=True)
-        else:
-            df_limpo["__record_id"] = ""
+    df_limpo = df_rec[colunas_existentes].copy().rename(
+        columns={
+            "Escuteiros": "Escuteiro",
+            "Valor Recebido": "Valor (€)",
+            "Meio de Pagamento": "Meio de Pagamento",
+            "Date": "Data",
+            "Quem Recebeu?": "Quem Recebeu",
+        }
+    )
+    if "id" in df_limpo.columns:
+        df_limpo["__record_id"] = df_limpo["id"]
+        df_limpo.drop(columns=["id"], inplace=True)
+    else:
+        df_limpo["__record_id"] = ""
 
-        coluna_categoria = escolher_coluna(
-            df_rec,
-            [
-                "Tag_Recebimento",
-                "Tag Recebimento",
-                "Categoria",
-                "Motivo",
-                "Tag",
-            ],
-        )
+    coluna_categoria = escolher_coluna(
+        df_rec,
+        [
+            "Tag_Recebimento",
+            "Tag Recebimento",
+            "Categoria",
+            "Motivo",
+            "Tag",
+        ],
+    )
 
-        if coluna_categoria and coluna_categoria in df_rec.columns:
-            def _normalizar_categoria(valor):
-                if isinstance(valor, list):
-                    return ", ".join(str(item) for item in valor if str(item).strip())
-                return valor
+    if coluna_categoria and coluna_categoria in df_rec.columns:
 
-            df_limpo["Categoria"] = df_rec[coluna_categoria].apply(_normalizar_categoria)
+        def _normalizar_categoria(valor):
+            if isinstance(valor, list):
+                return ", ".join(str(item) for item in valor if str(item).strip())
+            return valor
 
-        df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
-        escuteiros_map: dict[str, str] = {}
-        if isinstance(df_escuteiros, pd.DataFrame) and not df_escuteiros.empty and "id" in df_escuteiros.columns:
-            for coluna_nome in ("Nome do Escuteiro", "Escuteiro", "Nome"):
-                if coluna_nome in df_escuteiros.columns:
-                    escuteiros_map = df_escuteiros.set_index("id")[coluna_nome].dropna().to_dict()
-                    break
+        df_limpo["Categoria"] = df_rec[coluna_categoria].apply(_normalizar_categoria)
 
-        if escuteiros_map and "Escuteiro" in df_limpo.columns:
-            df_limpo["Escuteiro"] = df_limpo["Escuteiro"].apply(lambda valor: mapear_lista(valor, escuteiros_map))
+    df_escuteiros = dados.get("Escuteiros", pd.DataFrame())
+    escuteiros_map: dict[str, str] = {}
+    if isinstance(df_escuteiros, pd.DataFrame) and not df_escuteiros.empty and "id" in df_escuteiros.columns:
+        for coluna_nome in ("Nome do Escuteiro", "Escuteiro", "Nome"):
+            if coluna_nome in df_escuteiros.columns:
+                escuteiros_map = df_escuteiros.set_index("id")[coluna_nome].dropna().to_dict()
+                break
 
-        df_permissoes = dados.get("Permissoes", pd.DataFrame())
-        permissoes_map: dict[str, str] = {}
-        if isinstance(df_permissoes, pd.DataFrame) and not df_permissoes.empty:
-            permissoes_map = construir_mapa_nomes_por_id({"Permissoes": df_permissoes})
+    if escuteiros_map and "Escuteiro" in df_limpo.columns:
+        df_limpo["Escuteiro"] = df_limpo["Escuteiro"].apply(lambda valor: mapear_lista(valor, escuteiros_map))
 
-        mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
+    df_permissoes = dados.get("Permissoes", pd.DataFrame())
+    permissoes_map: dict[str, str] = {}
+    if isinstance(df_permissoes, pd.DataFrame) and not df_permissoes.empty:
+        permissoes_map = construir_mapa_nomes_por_id({"Permissoes": df_permissoes})
 
-        if "Quem Recebeu" in df_limpo.columns:
-            candidatos_quem_recebeu = [
-                coluna
-                for coluna in df_rec.columns
-                if coluna not in {"Quem Recebeu?", "Quem recebeu?_OLD"} and coluna.lower().startswith("quem recebeu")
-            ]
+    mapa_nomes_ids = construir_mapa_nomes_por_id(dados)
 
-            def _score_coluna(nome_coluna: str) -> tuple[int, str]:
-                nome_lower = nome_coluna.lower()
-                if "nome" in nome_lower or "name" in nome_lower:
-                    return (0, nome_lower)
-                if "lookup" in nome_lower:
-                    return (1, nome_lower)
-                return (2, nome_lower)
+    if "Quem Recebeu" in df_limpo.columns:
+        candidatos_quem_recebeu = [
+            coluna
+            for coluna in df_rec.columns
+            if coluna not in {"Quem Recebeu?", "Quem recebeu?_OLD"} and coluna.lower().startswith("quem recebeu")
+        ]
 
-            coluna_escolhida = None
-            if candidatos_quem_recebeu:
-                candidatos_quem_recebeu.sort(key=_score_coluna)
-                coluna_escolhida = candidatos_quem_recebeu[0]
+        def _score_coluna(nome_coluna: str) -> tuple[int, str]:
+            nome_lower = nome_coluna.lower()
+            if "nome" in nome_lower or "name" in nome_lower:
+                return (0, nome_lower)
+            if "lookup" in nome_lower:
+                return (1, nome_lower)
+            return (2, nome_lower)
 
-            if coluna_escolhida:
-                df_limpo["Quem Recebeu"] = df_rec[coluna_escolhida].apply(lambda valor: mapear_lista(valor, {}))
-            elif permissoes_map:
-                df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, permissoes_map)
-                )
-            elif mapa_nomes_ids:
-                df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, mapa_nomes_ids)
-                )
-            elif escuteiros_map:
-                df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(
-                    lambda valor: mapear_lista(valor, escuteiros_map)
-                )
+        coluna_escolhida = None
+        if candidatos_quem_recebeu:
+            candidatos_quem_recebeu.sort(key=_score_coluna)
+            coluna_escolhida = candidatos_quem_recebeu[0]
 
-        if "Valor (€)" in df_limpo.columns:
-            df_limpo["Valor (€)"] = pd.to_numeric(df_limpo["Valor (€)"], errors="coerce")
-        else:
-            df_limpo["Valor (€)"] = pd.Series(dtype="float64")
+        if coluna_escolhida:
+            df_limpo["Quem Recebeu"] = df_rec[coluna_escolhida].apply(lambda valor: mapear_lista(valor, {}))
+        elif permissoes_map:
+            df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(lambda valor: mapear_lista(valor, permissoes_map))
+        elif mapa_nomes_ids:
+            df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(lambda valor: mapear_lista(valor, mapa_nomes_ids))
+        elif escuteiros_map:
+            df_limpo["Quem Recebeu"] = df_limpo["Quem Recebeu"].apply(lambda valor: mapear_lista(valor, escuteiros_map))
 
-        if "Data" in df_limpo.columns:
-            df_limpo["Data"] = pd.to_datetime(df_limpo["Data"], errors="coerce").dt.normalize()
-        else:
-            df_limpo["Data"] = pd.Series(dtype="datetime64[ns]")
+    if "Valor (€)" in df_limpo.columns:
+        df_limpo["Valor (€)"] = pd.to_numeric(df_limpo["Valor (€)"], errors="coerce")
+    else:
+        df_limpo["Valor (€)"] = pd.Series(dtype="float64")
 
-        if "Categoria" in df_limpo.columns:
-            df_limpo["Categoria"] = df_limpo["Categoria"].apply(lambda valor: mapear_lista(valor, {}))
-        else:
-            df_limpo["Categoria"] = ""
+    if "Data" in df_limpo.columns:
+        df_limpo["Data"] = pd.to_datetime(df_limpo["Data"], errors="coerce").dt.normalize()
+    else:
+        df_limpo["Data"] = pd.Series(dtype="datetime64[ns]")
 
-        if "Quem Recebeu" in df_limpo.columns:
-            df_limpo.rename(columns={"Quem Recebeu": "Responsável"}, inplace=True)
-        else:
-            df_limpo["Responsável"] = ""
+    if "Categoria" in df_limpo.columns:
+        df_limpo["Categoria"] = df_limpo["Categoria"].apply(lambda valor: mapear_lista(valor, {}))
+    else:
+        df_limpo["Categoria"] = ""
 
-        for coluna in ("Escuteiro", "Categoria", "Meio de Pagamento", "Responsável"):
-            if coluna not in df_limpo.columns:
-                df_limpo[coluna] = ""
+    if "Quem Recebeu" in df_limpo.columns:
+        df_limpo.rename(columns={"Quem Recebeu": "Responsável"}, inplace=True)
+    else:
+        df_limpo["Responsável"] = ""
 
-        df_limpo = df_limpo[expected_columns + ["__record_id"]]
-        return df_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids
+    for coluna in ("Escuteiro", "Categoria", "Meio de Pagamento", "Responsável"):
+        if coluna not in df_limpo.columns:
+            df_limpo[coluna] = ""
+
+    df_limpo = df_limpo[expected_columns + ["__record_id"]]
+    return df_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids
 
     def _normalizar_estornos(df_estornos: pd.DataFrame | None) -> pd.DataFrame:
         expected_columns = ["Escuteiro", "Valor (€)", "Categoria", "Meio de Pagamento", "Data", "Responsável"]
@@ -1857,86 +1852,6 @@ if pode_editar_recebimentos:
                             st.error("Não foi possível atualizar os recebimentos.")
                             for mensagem in erros:
                                 st.error(mensagem)
-
-    df_audit_log = dados.get("Audit Log", pd.DataFrame())
-    if (
-        not df_rec_periodo.empty
-        and isinstance(df_audit_log, pd.DataFrame)
-        and not df_audit_log.empty
-        and "ID do Registo" in df_audit_log.columns
-    ):
-        df_audit_receb = df_audit_log[df_audit_log.get("Tabela Alterada") == "Recebimento"].copy()
-        if not df_audit_receb.empty:
-            if "Data da Mudança" in df_audit_receb.columns:
-                df_audit_receb["Data da Mudança"] = pd.to_datetime(
-                    df_audit_receb["Data da Mudança"], errors="coerce"
-                )
-
-            label_por_registo: dict[str, str] = {}
-            for _, linha in df_rec_periodo.iterrows():
-                rid = linha.get("__record_id", "")
-                if not rid or rid in label_por_registo:
-                    continue
-                escuteiro = str(linha.get("Escuteiro") or "").strip() or "Sem nome"
-                data_linha = linha.get("Data")
-                if isinstance(data_linha, pd.Timestamp):
-                    data_txt = data_linha.strftime("%d/%m/%Y")
-                elif isinstance(data_linha, datetime):
-                    data_txt = data_linha.strftime("%d/%m/%Y")
-                else:
-                    data_txt = ""
-                sufixo = f" · {data_txt}" if data_txt else ""
-                label_por_registo[rid] = f"{escuteiro}{sufixo}"
-
-            opcoes_hist = [rid for rid in df_rec_periodo["__record_id"].dropna().unique().tolist() if rid]
-            if opcoes_hist:
-                col_hist_select, col_hist_button = st.columns([4, 1])
-                with col_hist_select:
-                    registo_hist = st.selectbox(
-                        "Ver histórico de alterações",
-                        options=opcoes_hist,
-                        format_func=lambda rid: label_por_registo.get(rid, rid),
-                        key="historico_recebimentos_select",
-                    )
-
-                with col_hist_button:
-                    ver_hist = st.button("ℹ Histórico", key="historico_recebimentos_button", use_container_width=True)
-
-                if registo_hist and ver_hist:
-                    historico_registo = (
-                        df_audit_receb[df_audit_receb["ID do Registo"] == registo_hist]
-                        .sort_values("Data da Mudança", ascending=False)
-                        .head(3)
-                        .copy()
-                    )
-
-                    def _renderizar_historico() -> None:
-                        if historico_registo.empty:
-                            st.info("Não há registos de histórico para este recebimento.")
-                            return
-                        if "Data da Mudança" in historico_registo.columns:
-                            historico_registo["Data da Mudança"] = historico_registo["Data da Mudança"].dt.strftime(
-                                "%d/%m/%Y %H:%M"
-                            )
-                        colunas_hist = [
-                            coluna
-                            for coluna in [
-                                "Data da Mudança",
-                                "Informação Antes",
-                                "Informação Depois",
-                                "Usuário",
-                                "Origem da Mudança",
-                            ]
-                            if coluna in historico_registo.columns
-                        ]
-                        st.dataframe(historico_registo[colunas_hist], use_container_width=True)
-
-                    if hasattr(st, "popover"):
-                        with st.popover("Histórico de alterações"):
-                            _renderizar_historico()
-                    else:
-                        with st.expander("Histórico de alterações", expanded=True):
-                            _renderizar_historico()
 
     st.markdown("### ↩️ Estornos de Recebimento")
     if df_estornos_periodo.empty:
