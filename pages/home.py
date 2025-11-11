@@ -1712,19 +1712,20 @@ def dashboard_tesoureiro(dados: dict):
             """
             <style>
             [data-testid="stDataEditor"] select {
-                background-color: #fef3c7 !important;
+                background-color: #ffffff !important;
                 color: #1f2937 !important;
-                border: 1px solid #f59e0b !important;
-                border-radius: 4px !important;
+                border: 2px solid #2563eb !important;
+                border-radius: 6px !important;
                 font-weight: 600 !important;
+                padding: 2px 6px !important;
             }
             [data-testid="stDataEditor"] select:focus {
-                outline: 2px solid #f97316 !important;
-                box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.35) !important;
+                outline: 2px solid #38bdf8 !important;
+                box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35) !important;
             }
             [data-testid="stDataEditor"] option {
-                background-color: #111827 !important;
-                color: #f9fafb !important;
+                background-color: #f3f4f6 !important;
+                color: #1f2937 !important;
             }
             </style>
             """,
