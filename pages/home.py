@@ -1711,21 +1711,40 @@ def dashboard_tesoureiro(dados: dict):
         st.markdown(
             """
             <style>
-            [data-testid="stDataEditor"] select {
+            [data-testid="stDataEditor"] div[role="row"] > div:nth-child(5) {
+                background-color: #fefce8 !important;
+                color: #111827 !important;
+            }
+            [data-testid="stDataEditor"] div[role="row"] > div:nth-child(5) * {
+                color: #111827 !important;
+            }
+            [data-testid="stDataEditor"] select,
+            div[data-baseweb="select"] > div {
                 background-color: #ffffff !important;
-                color: #1f2937 !important;
+                color: #111827 !important;
                 border: 2px solid #2563eb !important;
                 border-radius: 6px !important;
                 font-weight: 600 !important;
                 padding: 2px 6px !important;
             }
-            [data-testid="stDataEditor"] select:focus {
+            [data-testid="stDataEditor"] select:focus,
+            div[data-baseweb="select"] > div:focus-within {
                 outline: 2px solid #38bdf8 !important;
                 box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35) !important;
             }
-            [data-testid="stDataEditor"] option {
-                background-color: #f3f4f6 !important;
-                color: #1f2937 !important;
+            div[data-baseweb="popover"] {
+                background-color: #ffffff !important;
+                color: #111827 !important;
+                border: 1px solid #2563eb !important;
+            }
+            div[data-baseweb="popover"] [role="option"] {
+                background-color: #ffffff !important;
+                color: #111827 !important;
+            }
+            div[data-baseweb="popover"] [role="option"][aria-selected="true"],
+            div[data-baseweb="popover"] [role="option"]:hover {
+                background-color: #bfdbfe !important;
+                color: #111827 !important;
             }
             </style>
             """,
