@@ -1739,20 +1739,25 @@ if pode_editar_recebimentos:
                 }
             )
 
-        grid_recebimentos = AgGrid(
-            df_grid_recebimentos,
-            gridOptions=gb_receb.build(),
-            update_mode=GridUpdateMode.NO_UPDATE,
-            data_return_mode=DataReturnMode.AS_INPUT,
-            allow_unsafe_jscode=True,
-            theme=AGGRID_THEME,
-            fit_columns_on_grid_load=True,
-            height=360,
-            key=f"aggrid_recebimentos_{'edit' if modo_edicao_receb else 'view'}",
-        )
+        with st.container(border=True):
+            grid_recebimentos = AgGrid(
+                df_grid_recebimentos,
+                gridOptions=gb_receb.build(),
+                update_mode=GridUpdateMode.NO_UPDATE,
+                data_return_mode=DataReturnMode.AS_INPUT,
+                allow_unsafe_jscode=True,
+                theme=AGGRID_THEME,
+                fit_columns_on_grid_load=True,
+                height=360,
+                key=f"aggrid_recebimentos_{'edit' if modo_edicao_receb else 'view'}",
+            )
 
-        if pode_editar_recebimentos and modo_edicao_receb:
-            if st.button("💾 Guardar alterações", key="guardar_recebimentos"):
+            if pode_editar_recebimentos and modo_edicao_receb:
+                guardar = st.button("💾 Guardar alterações", key="guardar_recebimentos", use_container_width=True)
+            else:
+                guardar = False
+
+        if pode_editar_recebimentos and modo_edicao_receb and guardar:
                 df_editado = pd.DataFrame(grid_recebimentos["data"])
                 if df_editado.empty or "__record_id" not in df_editado.columns:
                     st.info("Não foram detetadas alterações.")
@@ -1842,12 +1847,12 @@ if pode_editar_recebimentos:
                             mensagens_warn: list[str] = []
                             if erros:
                                 mensagens_warn.extend(erros)
-                            if aviso_audit and aviso_audit not in mensagens_warn:
-                                mensagens_warn.append(aviso_audit)
-                            if mensagens_warn:
-                                st.session_state["recebimentos_warning_messages"] = mensagens_warn
-                            atualizar_dados_cache()
-                            st.rerun()
+                        if aviso_audit and aviso_audit not in mensagens_warn:
+                            mensagens_warn.append(aviso_audit)
+                        if mensagens_warn:
+                            st.session_state["recebimentos_warning_messages"] = mensagens_warn
+                        atualizar_dados_cache()
+                        st.rerun()
 
                         if erros and not ids_sucesso:
                             st.error("Não foi possível atualizar os recebimentos.")
@@ -1868,17 +1873,18 @@ if pode_editar_recebimentos:
         gb_estornos.configure_column("Categoria", width=160)
         gb_estornos.configure_column("Responsável", width=200)
 
-        AgGrid(
-            df_estornos_grid,
-            gridOptions=gb_estornos.build(),
-            update_mode=GridUpdateMode.NO_UPDATE,
-            data_return_mode=DataReturnMode.AS_INPUT,
-            allow_unsafe_jscode=True,
-            theme=AGGRID_THEME,
-            fit_columns_on_grid_load=True,
-            height=320,
-            key="aggrid_estornos_recebimento",
-        )
+        with st.container(border=True):
+            AgGrid(
+                df_estornos_grid,
+                gridOptions=gb_estornos.build(),
+                update_mode=GridUpdateMode.NO_UPDATE,
+                data_return_mode=DataReturnMode.AS_INPUT,
+                allow_unsafe_jscode=True,
+                theme=AGGRID_THEME,
+                fit_columns_on_grid_load=True,
+                height=320,
+                key="aggrid_estornos_recebimento",
+            )
 
     st.caption(
         f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
