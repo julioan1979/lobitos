@@ -1469,36 +1469,37 @@ def _preparar_recebimentos(dados: dict) -> tuple[pd.DataFrame, dict[str, str], d
     df_limpo = df_limpo[expected_columns + ["__record_id"]]
     return df_limpo, escuteiros_map, permissoes_map, mapa_nomes_ids
 
-    def _normalizar_estornos(df_estornos: pd.DataFrame | None) -> pd.DataFrame:
-        expected_columns = ["Escuteiro", "Valor (€)", "Categoria", "Meio de Pagamento", "Data", "Responsável"]
-        if df_estornos is None or not isinstance(df_estornos, pd.DataFrame) or df_estornos.empty:
-            vazio = pd.DataFrame(columns=expected_columns)
-            vazio["Valor (€)"] = pd.Series(dtype="float64")
-            vazio["Data"] = pd.Series(dtype="datetime64[ns]")
-            return vazio
 
-        resultado = df_estornos.copy()
-        if "Valor (€)" in resultado.columns:
-            resultado["Valor (€)"] = pd.to_numeric(resultado["Valor (€)"], errors="coerce")
-        else:
-            resultado["Valor (€)"] = pd.Series(dtype="float64")
+def _normalizar_estornos(df_estornos: pd.DataFrame | None) -> pd.DataFrame:
+    expected_columns = ["Escuteiro", "Valor (€)", "Categoria", "Meio de Pagamento", "Data", "Responsável"]
+    if df_estornos is None or not isinstance(df_estornos, pd.DataFrame) or df_estornos.empty:
+        vazio = pd.DataFrame(columns=expected_columns)
+        vazio["Valor (€)"] = pd.Series(dtype="float64")
+        vazio["Data"] = pd.Series(dtype="datetime64[ns]")
+        return vazio
 
-        if "Data" in resultado.columns:
-            resultado["Data"] = pd.to_datetime(resultado["Data"], errors="coerce").dt.normalize()
-        else:
-            resultado["Data"] = pd.Series(dtype="datetime64[ns]")
+    resultado = df_estornos.copy()
+    if "Valor (€)" in resultado.columns:
+        resultado["Valor (€)"] = pd.to_numeric(resultado["Valor (€)"], errors="coerce")
+    else:
+        resultado["Valor (€)"] = pd.Series(dtype="float64")
 
-        for coluna in expected_columns:
-            if coluna not in resultado.columns:
-                if coluna == "Valor (€)":
-                    resultado[coluna] = pd.Series(dtype="float64")
-                elif coluna == "Data":
-                    resultado[coluna] = pd.Series(dtype="datetime64[ns]")
-                else:
-                    resultado[coluna] = ""
+    if "Data" in resultado.columns:
+        resultado["Data"] = pd.to_datetime(resultado["Data"], errors="coerce").dt.normalize()
+    else:
+        resultado["Data"] = pd.Series(dtype="datetime64[ns]")
 
-        colunas_ordem = expected_columns + ["__record_id"] if "__record_id" in resultado.columns else expected_columns
-        return resultado[colunas_ordem]
+    for coluna in expected_columns:
+        if coluna not in resultado.columns:
+            if coluna == "Valor (€)":
+                resultado[coluna] = pd.Series(dtype="float64")
+            elif coluna == "Data":
+                resultado[coluna] = pd.Series(dtype="datetime64[ns]")
+            else:
+                resultado[coluna] = ""
+
+    colunas_ordem = expected_columns + ["__record_id"] if "__record_id" in resultado.columns else expected_columns
+    return resultado[colunas_ordem]
 
     def _formatar_dataframe_display(df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
