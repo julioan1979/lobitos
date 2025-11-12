@@ -1572,6 +1572,7 @@ def dashboard_tesoureiro(dados: dict):
                 return opcoes_cache
 
         opcoes: list[str] = []
+        meta_ok = False
         try:
             tabela_meta = api.meta.table(BASE_ID, "Recebimento")
         except Exception:
@@ -1589,8 +1590,20 @@ def dashboard_tesoureiro(dados: dict):
                             for choice in choices
                             if str(choice.get("name", "")).strip()
                         ]
+                        meta_ok = bool(opcoes)
                         break
-        opcoes = opcoes or []
+        if not meta_ok and isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
+            if "Meio de Pagamento" in df_origem.columns:
+                valores = (
+                    df_origem["Meio de Pagamento"]
+                    .dropna()
+                    .apply(lambda valor: valor[0] if isinstance(valor, list) and valor else valor)
+                )
+                opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
+        if not meta_ok and opcoes:
+            st.session_state["meios_pagamento_meta_error"] = True
+        else:
+            st.session_state.pop("meios_pagamento_meta_error", None)
         st.session_state[cache_key] = opcoes
         return opcoes
 
@@ -1701,6 +1714,8 @@ def dashboard_tesoureiro(dados: dict):
             st.warning(aviso)
 
     meios_pagamento_opcoes = _obter_opcoes_meio_pagamento(df_rec_origem)
+    if st.session_state.get("meios_pagamento_meta_error"):
+        st.warning("⚠️ Não foi possível ler as opções do Airtable; a lista usa os valores já existentes.")
     pode_editar_recebimentos = (is_admin or is_tesoureiro) and not df_rec_periodo.empty
     modo_edicao_receb = False
     if pode_editar_recebimentos:
