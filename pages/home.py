@@ -1590,21 +1590,8 @@ def dashboard_tesoureiro(dados: dict):
                             if str(choice.get("name", "")).strip()
                         ]
                         break
-        if opcoes:
-            st.session_state[cache_key] = opcoes
-            return opcoes
-
-        if not opcoes and isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
-            if "Meio de Pagamento" in df_origem.columns:
-                valores = (
-                    df_origem["Meio de Pagamento"]
-                    .dropna()
-                    .apply(lambda valor: valor[0] if isinstance(valor, list) and valor else valor)
-                )
-                opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
-
-        if opcoes:
-            st.session_state[cache_key] = opcoes
+        opcoes = opcoes or []
+        st.session_state[cache_key] = opcoes
         return opcoes
 
     def _obter_nome_tabela_audit() -> str:
