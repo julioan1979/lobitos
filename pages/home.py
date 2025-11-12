@@ -23,6 +23,7 @@ from data_utils import (
     escolher_coluna,
     formatar_moeda_euro,
     mapear_lista,
+    normalizar_valor_selecao,
     preparar_dataframe_estornos,
 )
 try:
@@ -1131,6 +1132,8 @@ def dashboard_tesoureiro(dados: dict):
                 "Quem Recebeu?": "Quem Recebeu",
             }
         )
+        if "Meio de Pagamento" in df_limpo.columns:
+            df_limpo["Meio de Pagamento"] = df_limpo["Meio de Pagamento"].apply(normalizar_valor_selecao)
         if "id" in df_limpo.columns:
             df_limpo["__record_id"] = df_limpo["id"]
             df_limpo.drop(columns=["id"], inplace=True)
@@ -1254,6 +1257,9 @@ def dashboard_tesoureiro(dados: dict):
             resultado["Data"] = pd.to_datetime(resultado["Data"], errors="coerce").dt.normalize()
         else:
             resultado["Data"] = pd.Series(dtype="datetime64[ns]")
+
+        if "Meio de Pagamento" in resultado.columns:
+            resultado["Meio de Pagamento"] = resultado["Meio de Pagamento"].apply(normalizar_valor_selecao)
 
         for coluna in expected_columns:
             if coluna not in resultado.columns:
