@@ -1600,8 +1600,8 @@ def dashboard_tesoureiro(dados: dict):
                 )
                 opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
 
-    st.session_state[cache_key] = opcoes
-    return opcoes
+        st.session_state[cache_key] = opcoes
+        return opcoes
 
     def _obter_nome_tabela_audit() -> str:
         nome = context_extra("AUDIT_LOG_TABLE", "Audit Log")
