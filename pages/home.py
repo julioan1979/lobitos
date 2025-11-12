@@ -2,6 +2,8 @@
 #-*- coding: utf-8 -*-
 from typing import Any
 
+import json
+
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -13,6 +15,7 @@ import time
 from datetime import date, datetime, timedelta
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
+from st_aggrid import AgGrid, DataReturnMode, GridOptionsBuilder, GridUpdateMode, JsCode
 from airtable_config import context_labels, current_context, get_airtable_credentials, resolve_form_url
 from components.banner_convites import mostrar_convites
 from data_utils import (
@@ -31,6 +34,32 @@ except locale.Error:
 
 
 st.set_page_config(page_title="Portal Escutista", page_icon="🐾", layout="wide")
+
+AIRTABLE_SINGLE_SELECT_COLORS: dict[str, tuple[str, str]] = {
+    "gray": ("#adb5bd", "#212529"),
+    "grayDark": ("#6c757d", "#f8f9fa"),
+    "grayLight": ("#ced4da", "#212529"),
+    "brown": ("#795548", "#ffffff"),
+    "orange": ("#ff9800", "#212529"),
+    "yellow": ("#ffeb3b", "#212529"),
+    "lime": ("#cddc39", "#212529"),
+    "green": ("#4caf50", "#ffffff"),
+    "teal": ("#009688", "#ffffff"),
+    "cyan": ("#00bcd4", "#ffffff"),
+    "blue": ("#2196f3", "#ffffff"),
+    "darkBlue": ("#0d47a1", "#ffffff"),
+    "purple": ("#9c27b0", "#ffffff"),
+    "pink": ("#e91e63", "#ffffff"),
+    "magenta": ("#d81b60", "#ffffff"),
+    "red": ("#f44336", "#ffffff"),
+    "darkRed": ("#b71c1c", "#ffffff"),
+}
+
+
+def _map_airtable_color(nome_cor: str | None) -> tuple[str, str]:
+    if not nome_cor:
+        return "#f8f9fa", "#212529"
+    return AIRTABLE_SINGLE_SELECT_COLORS.get(nome_cor, ("#f8f9fa", "#212529"))
 
 # ======================
 # 1) Verificar login
@@ -1282,12 +1311,14 @@ def dashboard_tesoureiro(dados: dict):
 
     def _obter_opcoes_meio_pagamento(df_origem: pd.DataFrame) -> list[str]:
         cache_key = f"meios_pagamento_{BASE_ID}"
+        cache_color_key = f"meios_pagamento_cores_{BASE_ID}"
         if cache_key in st.session_state:
             opcoes_cache = st.session_state.get(cache_key, [])
             if isinstance(opcoes_cache, list) and opcoes_cache:
                 return opcoes_cache
 
         opcoes: list[str] = []
+        cores: dict[str, dict[str, str]] = {}
         try:
             schema = api.meta.base_schema(BASE_ID)
             for tabela in schema.get("tables", []):
@@ -1296,11 +1327,14 @@ def dashboard_tesoureiro(dados: dict):
                 for campo in tabela.get("fields", []):
                     if campo.get("name") == "Meio de Pagamento" and campo.get("type") == "singleSelect":
                         choices = campo.get("options", {}).get("choices", [])
-                        opcoes = [
-                            str(choice.get("name", "")).strip()
-                            for choice in choices
-                            if str(choice.get("name", "")).strip()
-                        ]
+                        opcoes = []
+                        for choice in choices:
+                            nome = str(choice.get("name", "")).strip()
+                            if not nome:
+                                continue
+                            opcoes.append(nome)
+                            bg, fg = _map_airtable_color(choice.get("color"))
+                            cores[nome] = {"bg": bg, "fg": fg}
                         break
                 if opcoes:
                     break
@@ -1315,8 +1349,13 @@ def dashboard_tesoureiro(dados: dict):
                     .apply(lambda valor: valor[0] if isinstance(valor, list) and valor else valor)
                 )
                 opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
+                for nome in opcoes:
+                    if nome not in cores:
+                        bg, fg = _map_airtable_color(None)
+                        cores[nome] = {"bg": bg, "fg": fg}
 
         st.session_state[cache_key] = opcoes
+        st.session_state[cache_color_key] = cores
         return opcoes
 
     periodo_key = "tesouraria_periodo_movimentos"
@@ -1447,98 +1486,161 @@ def dashboard_tesoureiro(dados: dict):
 
     if pode_editar_recebimentos and modo_edicao_receb and not df_rec_periodo.empty:
         base_editor = df_rec_periodo.copy()
-        dataset_editor = base_editor.set_index("__record_id") if "__record_id" in base_editor.columns else base_editor
-        colunas_disabled = [col for col in dataset_editor.columns if col != "Meio de Pagamento"]
+        dataset_editor = base_editor.copy()
+        if "__record_id" not in dataset_editor.columns:
+            st.warning("Não foi possível identificar os registos para edição.")
+        else:
+            color_cache_key = f"meios_pagamento_cores_{BASE_ID}"
+            color_map = st.session_state.get(color_cache_key, {}) or {}
+            if meios_pagamento_opcoes and not color_map:
+                padrao_bg, padrao_fg = _map_airtable_color(None)
+                color_map = {
+                    opcao: {"bg": padrao_bg, "fg": padrao_fg}
+                    for opcao in meios_pagamento_opcoes
+                }
 
-        with st.form("form_editar_meio_pagamento"):
-            df_editor = st.data_editor(
-                dataset_editor,
-                use_container_width=True,
-                num_rows="fixed",
-                disabled=tuple(colunas_disabled),
-                column_config={
-                    "Meio de Pagamento": st.column_config.SelectboxColumn(
-                        "Meio de Pagamento",
-                        options=meios_pagamento_opcoes,
-                        width="medium",
-                    )
-                },
-                key="data_editor_recebimentos",
+            color_map_js = json.dumps(color_map)
+            color_style_js = JsCode(
+                """
+                function(params) {
+                    const mapa = %s;
+                    const valor = params.value || '';
+                    const meta = mapa[valor];
+                    if (!meta) {
+                        return {};
+                    }
+                    return {
+                        'backgroundColor': meta.bg,
+                        'color': meta.fg,
+                        'fontWeight': '600',
+                        'borderRadius': '6px'
+                    };
+                }
+                """
+                % color_map_js
+            ) if color_map else None
+
+            color_renderer_js = JsCode(
+                """
+                function(params) {
+                    const mapa = %s;
+                    const valor = params.value || '';
+                    const meta = mapa[valor];
+                    if (!meta) {
+                        return valor;
+                    }
+                    return `<span style="display:inline-flex;align-items:center;padding:0 6px;border-radius:6px;background-color:${meta.bg};color:${meta.fg};font-weight:600;">${valor}</span>`;
+                }
+                """
+                % color_map_js
+            ) if color_map else None
+
+            gob = GridOptionsBuilder.from_dataframe(dataset_editor)
+            gob.configure_default_column(editable=False, resizable=True)
+            gob.configure_column("__record_id", header_name="Record ID", editable=False, hide=True)
+
+            for coluna in dataset_editor.columns:
+                if coluna not in {"Meio de Pagamento", "__record_id"}:
+                    gob.configure_column(coluna, editable=False)
+
+            parametros_editor = {"values": meios_pagamento_opcoes}
+            if color_renderer_js is not None:
+                parametros_editor["cellRenderer"] = color_renderer_js
+
+            gob.configure_column(
+                "Meio de Pagamento",
+                editable=True,
+                cellEditor="agRichSelectCellEditor",
+                cellEditorParams=parametros_editor,
+                cellRenderer=color_renderer_js,
+                cellStyle=color_style_js,
             )
-            gravar = st.form_submit_button("💾 Guardar alterações")
+            grid_options = gob.build()
 
-        if gravar:
-            df_editor.index.name = "__record_id"
-            df_editado = df_editor.reset_index()
-            mapa_original = df_rec_periodo.set_index("__record_id")["Meio de Pagamento"]
+            grid_response = None
+            with st.form("form_editar_meio_pagamento"):
+                grid_response = AgGrid(
+                    dataset_editor,
+                    gridOptions=grid_options,
+                    height=320,
+                    fit_columns_on_grid_load=True,
+                    update_mode=GridUpdateMode.VALUE_CHANGED,
+                    data_return_mode=DataReturnMode.AS_INPUT,
+                    allow_unsafe_jscode=True,
+                    theme="balham",
+                    key="aggrid_recebimentos",
+                )
+                gravar = st.form_submit_button("💾 Guardar alterações")
 
-            alteracoes: list[tuple[str, str, str]] = []
-            for _, linha in df_editado.iterrows():
-                record_id = linha.get("__record_id", "")
-                if not record_id:
-                    continue
-                valor_novo = linha.get("Meio de Pagamento", "")
-                valor_antigo = mapa_original.get(record_id, "")
-                if pd.isna(valor_antigo):
-                    valor_antigo = ""
-                if pd.isna(valor_novo):
-                    valor_novo = ""
-                valor_antigo_str = str(valor_antigo).strip()
-                valor_novo_str = str(valor_novo).strip()
-                if valor_antigo_str != valor_novo_str:
-                    alteracoes.append((record_id, valor_antigo_str, valor_novo_str))
-
-            if not alteracoes:
-                st.info("Não foram detetadas alterações.")
-            else:
-                tabela_receb = api.table(BASE_ID, "Recebimento")
-                tabela_audit = api.table(BASE_ID, "Audit Log")
-                ids_sucesso: list[str] = []
-                erros: list[str] = []
-                utilizador_atual = st.session_state.get("user", {}).get("email", "")
-
-                for record_id, valor_antigo, valor_novo in alteracoes:
-                    try:
-                        tabela_receb.update(record_id, {"Meio de Pagamento": valor_novo})
-                        ids_sucesso.append(record_id)
-                    except Exception as exc:
-                        erros.append(f"{record_id}: {exc}")
-                        continue
-
-                    try:
-                        tabela_audit.create(
-                            {
-                                "Tabela Alterada": "Recebimento",
-                                "ID do Registo": record_id,
-                                "Data da Mudança": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                "Informação Antes": f"Meio de Pagamento: {valor_antigo or '-'}",
-                                "Informação Depois": f"Meio de Pagamento: {valor_novo or '-'}",
-                                "Mudança Resumida (AI)": f"Alterado de {valor_antigo or '-'} para {valor_novo or '-'}",
-                                "Usuário": utilizador_atual or "desconhecido",
-                                "Origem da Mudança": "Streamlit",
-                            }
-                        )
-                    except Exception as exc:
-                        erros.append(f"{record_id} (Audit Log): {exc}")
-
-                    time.sleep(0.2)
-
-                if ids_sucesso:
-                    recentes = set(st.session_state.get("recebimentos_recent_ids", []))
-                    recentes.update(ids_sucesso)
-                    st.session_state["recebimentos_recent_ids"] = list(recentes)
-                    if erros:
-                        st.warning("Algumas alterações foram aplicadas com avisos. Consulte o log para detalhes.")
-                    st.session_state["recebimentos_success_message"] = (
-                        f"{len(ids_sucesso)} recebimento(s) atualizados."
-                    )
-                    atualizar_dados_cache()
-                    st.rerun()
-
-                if erros and not ids_sucesso:
-                    st.error("Não foi possível atualizar os recebimentos.")
-                    for mensagem in erros:
-                        st.error(mensagem)
+            if gravar:
+                dados_grid = grid_response.get("data") if grid_response else None
+                df_editado = pd.DataFrame(dados_grid or [])
+                if df_editado.empty:
+                    st.info("Não foram detetadas alterações.")
+                elif "__record_id" not in df_editado.columns:
+                    st.error("Os dados devolvidos pelo editor não contêm o identificador do registo.")
+                else:
+                    mapa_original = df_rec_periodo.set_index("__record_id")["Meio de Pagamento"]
+        
+                    alteracoes: list[tuple[str, str, str]] = []
+                    for _, linha in df_editado.iterrows():
+                        record_id = linha.get("__record_id", "")
+                        if not record_id:
+                            continue
+                        valor_novo = linha.get("Meio de Pagamento", "")
+                        valor_antigo = mapa_original.get(record_id, "")
+                        if pd.isna(valor_antigo):
+                            valor_antigo = ""
+                        if pd.isna(valor_novo):
+                            valor_novo = ""
+                        valor_antigo_str = str(valor_antigo).strip()
+                        valor_novo_str = str(valor_novo).strip()
+                        if valor_antigo_str != valor_novo_str:
+                            alteracoes.append((record_id, valor_antigo_str, valor_novo_str))
+        
+                    if not alteracoes:
+                        st.info("Não foram detetadas alterações.")
+                    else:
+                        tabela_receb = api.table(BASE_ID, "Recebimento")
+                        tabela_audit = api.table(BASE_ID, "Audit Log")
+                        ids_sucesso: list[str] = []
+                        erros: list[str] = []
+                        utilizador_atual = st.session_state.get("user", {}).get("email", "")
+        
+                        for record_id, valor_antigo, valor_novo in alteracoes:
+                            try:
+                                tabela_receb.update(record_id, {"Meio de Pagamento": valor_novo})
+                                ids_sucesso.append(record_id)
+                            except Exception as exc:
+                                erros.append(f"{record_id}: {exc}")
+                                continue
+        
+                            try:
+                                tabela_audit.create(
+                                    {
+                                        "Tabela Alterada": "Recebimento",
+                                        "ID do Registo": record_id,
+                                        "Data da Mudança": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                        "Informação Antes": f"Meio de Pagamento: {valor_antigo or '-'}",
+                                        "Informação Depois": f"Meio de Pagamento: {valor_novo or '-'}",
+                                        "Mudança Resumida (AI)": f"Alterado de {valor_antigo or '-'} para {valor_novo or '-'}",
+                                        "Usuário": utilizador_atual or "desconhecido",
+                                        "Origem da Mudança": "Streamlit",
+                                    }
+                                )
+                            except Exception as exc:
+                                erros.append(f"{record_id} (Audit Log): {exc}")
+        
+                            time.sleep(0.2)
+        
+                        if ids_sucesso:
+                            recentes = set(st.session_state.get("recebimentos_recent_ids", []))
+                            recentes.update(ids_sucesso)
+                            st.session_state["recebimentos_recent_ids"] = list(recentes)
+                            st.session_state["recebimentos_success_message"] = "✅ Alterações guardadas com sucesso."
+                        if erros:
+                            st.session_state.setdefault("recebimentos_warning_messages", []).extend(erros)
+                        st.rerun()
     else:
         _renderizar_tabela(df_recebimentos_display, mensagem_recebimentos)
 
@@ -2592,160 +2694,257 @@ def dashboard_admin(dados: dict):
                     rename_map[col_local] = "Local"
                 df_display = df_display.rename(columns=rename_map)
 
-                column_config = {
-                    "Data": st.column_config.DateColumn("Data", format="YYYY-MM-DD"),
-                    "Dia": st.column_config.Column("Dia"),
-                    "Semana": st.column_config.NumberColumn("Semana", format="%d", width="small"),
-                    "Agenda": st.column_config.TextColumn("Agenda/Descrição"),
-                    "Preparação": st.column_config.CheckboxColumn("Preparação de Lanches?"),
-                    "Estado": st.column_config.SelectboxColumn("Estado", options=["Ativo", "Cancelado"]),
-                    "Apagar": st.column_config.CheckboxColumn("Apagar"),
-                    "ID": st.column_config.Column("ID", disabled=True, width="small"),
-                }
-                if "Local" in df_display.columns:
-                    column_config["Local"] = st.column_config.TextColumn("Local")
+                df_display["Data"] = pd.to_datetime(df_display["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
 
                 st.caption("Marque 'Apagar' para remover um evento sem voluntários associados e clique em 'Guardar alterações da tabela'.")
 
-                editado = st.data_editor(
-                    df_display,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config=column_config,
-                    key="admin_event_editor",
+                date_formatter = JsCode(
+                    """
+                    function(params) {
+                        if (!params.value) {
+                            return '';
+                        }
+                        const data = new Date(params.value);
+                        if (isNaN(data.getTime())) {
+                            return params.value;
+                        }
+                        return data.toISOString().slice(0, 10);
+                    }
+                    """
                 )
+                date_parser = JsCode(
+                    """
+                    function(params) {
+                        if (!params.newValue) {
+                            return null;
+                        }
+                        const valor = params.newValue;
+                        const data = new Date(valor);
+                        if (isNaN(data.getTime())) {
+                            return valor;
+                        }
+                        return data.toISOString().slice(0, 10);
+                    }
+                    """
+                )
+
+                gob_cal = GridOptionsBuilder.from_dataframe(df_display)
+                gob_cal.configure_default_column(editable=False, resizable=True)
+                gob_cal.configure_column(
+                    "Data",
+                    editable=True,
+                    type=["dateColumn"],
+                    cellEditor="agDateCellEditor",
+                    cellEditorParams={"useBrowserDatePicker": True},
+                    valueFormatter=date_formatter,
+                    valueParser=date_parser,
+                )
+                gob_cal.configure_column("Dia", editable=False)
+                gob_cal.configure_column("Semana", editable=False)
+                gob_cal.configure_column("Agenda", editable=True)
+                if "Local" in df_display.columns:
+                    gob_cal.configure_column("Local", editable=True)
+                gob_cal.configure_column(
+                    "Preparação",
+                    editable=True,
+                    cellEditor="agCheckboxCellEditor",
+                    cellRenderer="agCheckboxRenderer",
+                    type=["booleanColumn"],
+                )
+                gob_cal.configure_column(
+                    "Estado",
+                    editable=True,
+                    cellEditor="agSelectCellEditor",
+                    cellEditorParams={"values": ["Ativo", "Cancelado"]},
+                )
+                gob_cal.configure_column(
+                    "Apagar",
+                    editable=True,
+                    cellEditor="agCheckboxCellEditor",
+                    cellRenderer="agCheckboxRenderer",
+                    type=["booleanColumn"],
+                )
+                gob_cal.configure_column("ID", editable=False)
+                gob_cal.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
+                grid_options_cal = gob_cal.build()
+
+                grid_response_cal = AgGrid(
+                    df_display,
+                    gridOptions=grid_options_cal,
+                    height=380,
+                    fit_columns_on_grid_load=True,
+                    update_mode=GridUpdateMode.VALUE_CHANGED,
+                    data_return_mode=DataReturnMode.AS_INPUT,
+                    allow_unsafe_jscode=True,
+                    theme="balham",
+                    key="aggrid_admin_eventos",
+                )
+
                 if st.button("Guardar alterações da tabela", key="admin_event_table_save"):
-                    edited_records = editado.to_dict("records")
-                    original_records = df_display.to_dict("records")
+                    dados_cal = grid_response_cal.get("data") if grid_response_cal else None
+                    if not dados_cal:
+                        st.info("Nenhuma alteração para guardar.")
+                    else:
+                        editado = pd.DataFrame(dados_cal)
+                        missing_cols = [col for col in df_display.columns if col not in editado.columns]
+                        for col in missing_cols:
+                            editado[col] = df_display[col]
 
-                    def _normalize_id(value):
-                        if value is None:
-                            return None
-                        if isinstance(value, float) and pd.isna(value):
-                            return None
-                        value = str(value).strip()
-                        return value or None
+                        def _to_bool(valor: Any) -> bool:
+                            if isinstance(valor, bool):
+                                return valor
+                            if valor is None:
+                                return False
+                            if isinstance(valor, str):
+                                return valor.strip().lower() in {"true", "1", "sim", "yes", "on"}
+                            if isinstance(valor, (int, float)):
+                                if pd.isna(valor):
+                                    return False
+                                return bool(valor)
+                            return bool(valor)
 
-                    def _to_iso(value):
-                        if isinstance(value, pd.Timestamp):
-                            return value.strftime("%Y-%m-%d")
-                        if hasattr(value, "isoformat"):
-                            return value.isoformat()
-                        if isinstance(value, str) and value:
-                            try:
-                                return pd.to_datetime(value).strftime("%Y-%m-%d")
-                            except Exception:
+                        for coluna_bool in ("Preparação", "Apagar"):
+                            if coluna_bool in editado.columns:
+                                editado[coluna_bool] = editado[coluna_bool].apply(_to_bool)
+
+                        if "Estado" in editado.columns:
+                            editado["Estado"] = editado["Estado"].fillna("Ativo").astype(str)
+                        if "Agenda" in editado.columns:
+                            editado["Agenda"] = editado["Agenda"].fillna("").astype(str)
+                        if "Local" in editado.columns:
+                            editado["Local"] = editado["Local"].fillna("").astype(str)
+
+                        edited_records = editado.to_dict("records")
+                        original_records = df_display.to_dict("records")
+
+                        def _normalize_id(value):
+                            if value is None:
                                 return None
-                        return None
-
-                    original_map = {}
-                    for rec in original_records:
-                        norm_id = _normalize_id(rec.get("ID"))
-                        if norm_id:
-                            original_map[norm_id] = rec
-
-                    atualizados = 0
-                    removidos = 0
-                    bloqueados = []
-                    tbl_cal = api.table(BASE_ID, "Calendario")
-
-                    def _tem_voluntarios(evento_id: str) -> bool:
-                        if df_volunt.empty or "Date (calendário)" not in df_volunt.columns:
-                            return False
-                        return df_volunt["Date (calendário)"].apply(
-                            lambda v: evento_id in v if isinstance(v, list) else v == evento_id
-                        ).any()
-
-                    for row in edited_records:
-                        event_id = _normalize_id(row.get("ID"))
-                        if not event_id:
-                            continue
-                        original = original_map.get(event_id)
-                        if original is None:
-                            continue
-
-                        if row.get("Apagar"):
-                            if _tem_voluntarios(event_id):
-                                bloqueados.append((event_id, "Existe voluntariado associado"))
+                            if isinstance(value, float) and pd.isna(value):
+                                return None
+                            value = str(value).strip()
+                            return value or None
+    
+                        def _to_iso(value):
+                            if isinstance(value, pd.Timestamp):
+                                return value.strftime("%Y-%m-%d")
+                            if hasattr(value, "isoformat"):
+                                return value.isoformat()
+                            if isinstance(value, str) and value:
+                                try:
+                                    return pd.to_datetime(value).strftime("%Y-%m-%d")
+                                except Exception:
+                                    return None
+                            return None
+    
+                        original_map = {}
+                        for rec in original_records:
+                            norm_id = _normalize_id(rec.get("ID"))
+                            if norm_id:
+                                original_map[norm_id] = rec
+    
+                        atualizados = 0
+                        removidos = 0
+                        bloqueados = []
+                        tbl_cal = api.table(BASE_ID, "Calendario")
+    
+                        def _tem_voluntarios(evento_id: str) -> bool:
+                            if df_volunt.empty or "Date (calendário)" not in df_volunt.columns:
+                                return False
+                            return df_volunt["Date (calendário)"].apply(
+                                lambda v: evento_id in v if isinstance(v, list) else v == evento_id
+                            ).any()
+    
+                        for row in edited_records:
+                            event_id = _normalize_id(row.get("ID"))
+                            if not event_id:
                                 continue
-                            try:
-                                tbl_cal.delete(event_id)
-                            except Exception as exc:
-                                st.error(f"Não consegui apagar o evento {event_id}: {exc}")
+                            original = original_map.get(event_id)
+                            if original is None:
+                                continue
+    
+                            if row.get("Apagar"):
+                                if _tem_voluntarios(event_id):
+                                    bloqueados.append((event_id, "Existe voluntariado associado"))
+                                    continue
+                                try:
+                                    tbl_cal.delete(event_id)
+                                except Exception as exc:
+                                    st.error(f"Não consegui apagar o evento {event_id}: {exc}")
+                                else:
+                                    removidos += 1
+                                continue
+    
+                            campos_update = {}
+                            iso_novo = _to_iso(row.get("Data"))
+                            iso_original = _to_iso(original.get("Data"))
+                            if iso_novo and iso_novo != iso_original:
+                                campos_update["Data"] = iso_novo
+    
+                            estado_novo = row.get("Estado", "Ativo") or "Ativo"
+                            agenda_nova = (row.get("Agenda") or "").strip()
+                            if estado_novo == "Cancelado":
+                                if not agenda_nova:
+                                    agenda_nova = "CANCELADO"
+                                if not agenda_nova.startswith("[CANCELADO]"):
+                                    agenda_nova = f"[CANCELADO] {agenda_nova}".strip()
+                                campos_update["Haverá preparação de Lanches?"] = False
                             else:
-                                removidos += 1
-                            continue
-
-                        campos_update = {}
-                        iso_novo = _to_iso(row.get("Data"))
-                        iso_original = _to_iso(original.get("Data"))
-                        if iso_novo and iso_novo != iso_original:
-                            campos_update["Data"] = iso_novo
-
-                        estado_novo = row.get("Estado", "Ativo") or "Ativo"
-                        agenda_nova = (row.get("Agenda") or "").strip()
-                        if estado_novo == "Cancelado":
-                            if not agenda_nova:
-                                agenda_nova = "CANCELADO"
-                            if not agenda_nova.startswith("[CANCELADO]"):
-                                agenda_nova = f"[CANCELADO] {agenda_nova}".strip()
-                            campos_update["Haverá preparação de Lanches?"] = False
-                        else:
-                            if agenda_nova.startswith("[CANCELADO]"):
-                                agenda_nova = agenda_nova.replace("[CANCELADO]", "", 1).strip()
-
-                        agenda_original = (
-                            df_manage.loc[df_manage["ID"] == event_id, "_agenda_raw"].iloc[0]
-                            if event_id in df_manage["ID"].values
-                            else ""
-                        )
-                        if agenda_nova != (agenda_original or ""):
-                            campos_update["Agenda"] = agenda_nova
-
-                        prep_novo = bool(row.get("Preparação", False))
-                        prep_original = (
-                            bool(df_manage.loc[df_manage["ID"] == event_id, "Preparação"].iloc[0])
-                            if event_id in df_manage["ID"].values
-                            else False
-                        )
-                        if estado_novo != "Cancelado" and prep_novo != prep_original:
-                            campos_update["Haverá preparação de Lanches?"] = prep_novo
-
-                        if "Local" in row:
-                            local_novo = row.get("Local", "")
-                            local_original = (
-                                df_manage.loc[df_manage["ID"] == event_id, "Local"].iloc[0]
-                                if (col_local and event_id in df_manage["ID"].values)
+                                if agenda_nova.startswith("[CANCELADO]"):
+                                    agenda_nova = agenda_nova.replace("[CANCELADO]", "", 1).strip()
+    
+                            agenda_original = (
+                                df_manage.loc[df_manage["ID"] == event_id, "_agenda_raw"].iloc[0]
+                                if event_id in df_manage["ID"].values
                                 else ""
                             )
-                            if (local_novo or "") != (local_original or ""):
-                                campos_update["Local"] = local_novo
-
-                        if not campos_update:
-                            continue
-
-                        try:
-                            tbl_cal.update(event_id, campos_update)
-                        except Exception as exc:
-                            st.error(f"Não consegui atualizar o evento {event_id}: {exc}")
+                            if agenda_nova != (agenda_original or ""):
+                                campos_update["Agenda"] = agenda_nova
+    
+                            prep_novo = bool(row.get("Preparação", False))
+                            prep_original = (
+                                bool(df_manage.loc[df_manage["ID"] == event_id, "Preparação"].iloc[0])
+                                if event_id in df_manage["ID"].values
+                                else False
+                            )
+                            if estado_novo != "Cancelado" and prep_novo != prep_original:
+                                campos_update["Haverá preparação de Lanches?"] = prep_novo
+    
+                            if "Local" in row:
+                                local_novo = row.get("Local", "")
+                                local_original = (
+                                    df_manage.loc[df_manage["ID"] == event_id, "Local"].iloc[0]
+                                    if (col_local and event_id in df_manage["ID"].values)
+                                    else ""
+                                )
+                                if (local_novo or "") != (local_original or ""):
+                                    campos_update["Local"] = local_novo
+    
+                            if not campos_update:
+                                continue
+    
+                            try:
+                                tbl_cal.update(event_id, campos_update)
+                            except Exception as exc:
+                                st.error(f"Não consegui atualizar o evento {event_id}: {exc}")
+                            else:
+                                atualizados += 1
+    
+                        if atualizados or removidos:
+                            mensagens = []
+                            if atualizados:
+                                mensagens.append(f"{atualizados} evento(s) atualizados")
+                            if removidos:
+                                mensagens.append(f"{removidos} evento(s) apagados")
+                            st.success("; ".join(mensagens) + ".")
+                            refrescar_dados()
+                            st.rerun()
                         else:
-                            atualizados += 1
-
-                    if atualizados or removidos:
-                        mensagens = []
-                        if atualizados:
-                            mensagens.append(f"{atualizados} evento(s) atualizados")
-                        if removidos:
-                            mensagens.append(f"{removidos} evento(s) apagados")
-                        st.success("; ".join(mensagens) + ".")
-                        refrescar_dados()
-                        st.rerun()
-                    else:
-                        st.info("Nenhuma alteração para guardar.")
-
-                    if bloqueados:
-                        detalhes = ", ".join(f"{rid} ({motivo})" for rid, motivo in bloqueados)
-                        st.warning(f"Não foi possível eliminar os eventos: {detalhes}.")
+                            st.info("Nenhuma alteração para guardar.")
+    
+                        if bloqueados:
+                            detalhes = ", ".join(f"{rid} ({motivo})" for rid, motivo in bloqueados)
+                            st.warning(f"Não foi possível eliminar os eventos: {detalhes}.")
 
 # ======================
 # 5) Mostrar dashboards consoante role
