@@ -1573,12 +1573,16 @@ def dashboard_tesoureiro(dados: dict):
 
         opcoes: list[str] = []
         try:
-            schema = api.meta.base_schema(BASE_ID)
-            for tabela in schema.get("tables", []):
-                if tabela.get("name") != "Recebimento":
-                    continue
-                for campo in tabela.get("fields", []):
-                    if campo.get("name") == "Meio de Pagamento" and campo.get("type") == "singleSelect":
+            tabela_meta = api.meta.table(BASE_ID, "Recebimento")
+        except Exception:
+            tabela_meta = None
+        else:
+            if isinstance(tabela_meta, dict):
+                for campo in tabela_meta.get("fields", []):
+                    if (
+                        campo.get("name") == "Meio de Pagamento"
+                        and campo.get("type") == "singleSelect"
+                    ):
                         choices = campo.get("options", {}).get("choices", [])
                         opcoes = [
                             str(choice.get("name", "")).strip()
@@ -1586,10 +1590,9 @@ def dashboard_tesoureiro(dados: dict):
                             if str(choice.get("name", "")).strip()
                         ]
                         break
-                if opcoes:
-                    break
-        except Exception:
-            opcoes = []
+        if opcoes:
+            st.session_state[cache_key] = opcoes
+            return opcoes
 
         if not opcoes and isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
             if "Meio de Pagamento" in df_origem.columns:
@@ -1600,7 +1603,8 @@ def dashboard_tesoureiro(dados: dict):
                 )
                 opcoes = sorted({str(valor).strip() for valor in valores if str(valor).strip()})
 
-        st.session_state[cache_key] = opcoes
+        if opcoes:
+            st.session_state[cache_key] = opcoes
         return opcoes
 
     def _obter_nome_tabela_audit() -> str:
