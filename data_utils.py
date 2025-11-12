@@ -1,3 +1,6 @@
+from collections import OrderedDict
+from typing import Any
+
 import pandas as pd
 
 
@@ -7,6 +10,44 @@ def mapear_lista(valor, mapping):
     if pd.isna(valor):
         return ""
     return mapping.get(valor, valor)
+
+
+def normalizar_valor_selecao(valor: Any) -> str:
+    """Extrai o texto legível de seleções simples/múltiplas vindas do Airtable."""
+
+    def _extrair(item: Any) -> str:
+        if item is None or (isinstance(item, float) and pd.isna(item)):
+            return ""
+        if isinstance(item, dict):
+            for chave in ("name", "Nome", "label", "Label", "text", "Text", "value", "Value"):
+                texto = item.get(chave)
+                if texto:
+                    return str(texto).strip()
+            # Ignorar classes de estilo internas do Airtable.
+            estilo = item.get("style") if "style" in item else None
+            if isinstance(estilo, str) and estilo.startswith("capm-style-"):
+                return ""
+            if len(item) == 1:
+                unico = next(iter(item.values()))
+                if isinstance(unico, (str, int, float)):
+                    return str(unico).strip()
+            return ", ".join(str(v).strip() for v in item.values() if isinstance(v, (str, int, float)))
+        if isinstance(item, list):
+            textos = [_extrair(subitem) for subitem in item]
+            textos = [texto for texto in textos if texto]
+            return ", ".join(OrderedDict.fromkeys(textos))
+        if isinstance(item, str) and item.startswith("capm-style-"):
+            return ""
+        return str(item).strip()
+
+    if isinstance(valor, list):
+        textos = [_extrair(item) for item in valor]
+        textos = [texto for texto in textos if texto]
+        if not textos:
+            return ""
+        return ", ".join(OrderedDict.fromkeys(textos))
+
+    return _extrair(valor)
 
 
 def formatar_moeda_euro(valor) -> str:
@@ -227,9 +268,7 @@ def preparar_dataframe_estornos(
         resultado["Valor (€)"] = pd.to_numeric(valores, errors="coerce").abs()
 
     if coluna_meio:
-        resultado["Meio de Pagamento"] = df_trabalho[coluna_meio].apply(
-            lambda valor: valor[0] if isinstance(valor, list) and valor else valor
-        )
+        resultado["Meio de Pagamento"] = df_trabalho[coluna_meio].apply(normalizar_valor_selecao)
 
     if coluna_data:
         datas = df_trabalho[coluna_data].apply(lambda v: v[0] if isinstance(v, list) and v else v)
