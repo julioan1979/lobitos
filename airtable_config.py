@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional, Tuple
 
+import logging
+
 import streamlit as st
 import toml
 
@@ -40,7 +42,18 @@ def _load_raw_secrets() -> Dict[str, Dict[str, str]]:
     try:
         keys: Iterable[str] = st.secrets.keys()  # type: ignore[attr-defined]
     except Exception:
-        return toml.load(".streamlit/secrets.toml")
+        try:
+            return toml.load(".streamlit/secrets.toml")
+        except FileNotFoundError:
+            logging.warning(
+                "Secrets locais não encontrados em .streamlit/secrets.toml; prosseguindo sem configuração local."
+            )
+            return {}
+        except toml.TomlDecodeError:
+            logging.warning(
+                "Secrets locais em .streamlit/secrets.toml estão mal formatados; prosseguindo sem configuração local."
+            )
+            return {}
     else:
         return {key: _to_plain_dict(st.secrets[key]) for key in keys}  # type: ignore[index]
 
