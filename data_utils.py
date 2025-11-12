@@ -23,15 +23,21 @@ def normalizar_valor_selecao(valor: Any) -> str:
                 texto = item.get(chave)
                 if texto:
                     return str(texto).strip()
-            # Ignorar classes de estilo internas do Airtable.
-            estilo = item.get("style") if "style" in item else None
-            if isinstance(estilo, str) and estilo.startswith("capm-style-"):
-                return ""
-            if len(item) == 1:
-                unico = next(iter(item.values()))
-                if isinstance(unico, (str, int, float)):
-                    return str(unico).strip()
-            return ", ".join(str(v).strip() for v in item.values() if isinstance(v, (str, int, float)))
+            # Ignorar chaves de estilo internas do Airtable.
+            valores_legiveis: list[str] = []
+            for chave, valor in item.items():
+                if chave in {"style", "styles", "class", "classes"}:
+                    continue
+                if isinstance(valor, (str, int, float)):
+                    texto = str(valor).strip()
+                    if texto.startswith("capm-style-"):
+                        continue
+                    if texto:
+                        valores_legiveis.append(texto)
+            if valores_legiveis:
+                return ", ".join(OrderedDict.fromkeys(valores_legiveis))
+            # Nenhum texto legível encontrado.
+            return ""
         if isinstance(item, list):
             textos = [_extrair(subitem) for subitem in item]
             textos = [texto for texto in textos if texto]
