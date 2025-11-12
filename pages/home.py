@@ -1502,25 +1502,25 @@ def dashboard_tesoureiro(dados: dict):
                 else:
                     resultado[coluna] = ""
 
-    colunas_ordem = expected_columns + ["__record_id"] if "__record_id" in resultado.columns else expected_columns
-    return resultado[colunas_ordem]
+        colunas_ordem = expected_columns + ["__record_id"] if "__record_id" in resultado.columns else expected_columns
+        return resultado[colunas_ordem]
 
-def _formatar_dataframe_display(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df.copy()
-    display_df = df.copy()
-    if "Valor (€)" in display_df.columns:
-        display_df["Valor (€)"] = display_df["Valor (€)"].apply(
-            lambda valor: formatar_moeda_euro(valor) if pd.notna(valor) else ""
-        )
-    if "Data" in display_df.columns:
-        display_df["Data"] = (
-            pd.to_datetime(display_df["Data"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
-        )
-    for coluna in ("Escuteiro", "Categoria", "Meio de Pagamento", "Responsável"):
-        if coluna in display_df.columns:
-            display_df[coluna] = display_df[coluna].fillna("")
-    return display_df
+    def _formatar_dataframe_display(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df.copy()
+        display_df = df.copy()
+        if "Valor (€)" in display_df.columns:
+            display_df["Valor (€)"] = display_df["Valor (€)"].apply(
+                lambda valor: formatar_moeda_euro(valor) if pd.notna(valor) else ""
+            )
+        if "Data" in display_df.columns:
+            display_df["Data"] = (
+                pd.to_datetime(display_df["Data"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+            )
+        for coluna in ("Escuteiro", "Categoria", "Meio de Pagamento", "Responsável"):
+            if coluna in display_df.columns:
+                display_df[coluna] = display_df[coluna].fillna("")
+        return display_df
 
     def _aplicar_formatacao_display(df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
