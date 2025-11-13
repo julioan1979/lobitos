@@ -1574,23 +1574,28 @@ def dashboard_tesoureiro(dados: dict):
         opcoes: list[str] = []
         meta_ok = False
         try:
-            tabela_meta = api.meta.table(BASE_ID, "Recebimento")
+            schema = api.meta.base_schema(BASE_ID)
         except Exception:
-            tabela_meta = None
+            schema = None
         else:
-            if isinstance(tabela_meta, dict):
-                for campo in tabela_meta.get("fields", []):
-                    if (
-                        campo.get("name") == "Meio de Pagamento"
-                        and campo.get("type") == "singleSelect"
-                    ):
-                        choices = campo.get("options", {}).get("choices", [])
-                        opcoes = [
-                            str(choice.get("name", "")).strip()
-                            for choice in choices
-                            if str(choice.get("name", "")).strip()
-                        ]
-                        meta_ok = bool(opcoes)
+            if isinstance(schema, dict):
+                for tabela in schema.get("tables", []):
+                    if tabela.get("name") != "Recebimento":
+                        continue
+                    for campo in tabela.get("fields", []):
+                        if (
+                            campo.get("name") == "Meio de Pagamento"
+                            and campo.get("type") == "singleSelect"
+                        ):
+                            choices = campo.get("options", {}).get("choices", [])
+                            opcoes = [
+                                str(choice.get("name", "")).strip()
+                                for choice in choices
+                                if str(choice.get("name", "")).strip()
+                            ]
+                            meta_ok = bool(opcoes)
+                            break
+                    if meta_ok:
                         break
         if not meta_ok and isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
             if "Meio de Pagamento" in df_origem.columns:
