@@ -15,6 +15,7 @@ from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
 import json
 from st_aggrid import AgGrid, DataReturnMode, GridOptionsBuilder, GridUpdateMode, JsCode
+import requests
 from airtable_config import (
     context_labels,
     context_extra,
@@ -1574,29 +1575,36 @@ def dashboard_tesoureiro(dados: dict):
         opcoes: list[str] = []
         meta_ok = False
         try:
-            schema = api.meta.base_schema(BASE_ID)
+            response = requests.get(
+                f"https://api.airtable.com/v0/meta/bases/{BASE_ID}/tables",
+                headers={"Authorization": f"Bearer {AIRTABLE_TOKEN}"},
+                timeout=10,
+            )
+            response.raise_for_status()
         except Exception:
             schema = None
         else:
-            if isinstance(schema, dict):
-                for tabela in schema.get("tables", []):
-                    if tabela.get("name") != "Recebimento":
-                        continue
-                    for campo in tabela.get("fields", []):
-                        if (
-                            campo.get("name") == "Meio de Pagamento"
-                            and campo.get("type") == "singleSelect"
-                        ):
-                            choices = campo.get("options", {}).get("choices", [])
-                            opcoes = [
-                                str(choice.get("name", "")).strip()
-                                for choice in choices
-                                if str(choice.get("name", "")).strip()
-                            ]
-                            meta_ok = bool(opcoes)
-                            break
-                    if meta_ok:
+            schema = response.json()
+
+        if isinstance(schema, dict):
+            for tabela in schema.get("tables", []):
+                if tabela.get("name") != "Recebimento":
+                    continue
+                for campo in tabela.get("fields", []):
+                    if (
+                        campo.get("name") == "Meio de Pagamento"
+                        and campo.get("type") == "singleSelect"
+                    ):
+                        choices = campo.get("options", {}).get("choices", [])
+                        opcoes = [
+                            str(choice.get("name", "")).strip()
+                            for choice in choices
+                            if str(choice.get("name", "")).strip()
+                        ]
+                        meta_ok = bool(opcoes)
                         break
+                if meta_ok:
+                    break
         if not meta_ok and isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
             if "Meio de Pagamento" in df_origem.columns:
                 valores = (
