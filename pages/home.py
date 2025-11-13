@@ -33,7 +33,7 @@ except locale.Error:
     # fallback para não dar erro no Streamlit Cloud
     locale.setlocale(locale.LC_ALL, "")
 
-AGGRID_THEME = "balham-dark"
+AGGRID_THEME = "streamlit"
 AGGRID_THEME_CLASS = f".ag-theme-{AGGRID_THEME}"
 
 
@@ -924,6 +924,47 @@ def dashboard_pais():
 
 
 def dashboard_tesoureiro(dados: dict):
+    st.markdown(
+        """
+        <style>
+        .ag-theme-streamlit {
+            background-color: var(--background-color);
+        }
+        .ag-theme-streamlit .ag-header,
+        .ag-theme-streamlit .ag-header-viewport {
+            background: var(--background-color);
+            border-bottom: 1px solid var(--secondary-background-color);
+        }
+        .ag-theme-streamlit .ag-root-wrapper,
+        .ag-theme-streamlit .ag-root-wrapper-body {
+            border: 1px solid var(--secondary-background-color);
+            border-radius: 0.5rem;
+        }
+        .ag-theme-streamlit .ag-cell {
+            border-right: 1px solid var(--secondary-background-color);
+            color: inherit;
+            background: transparent;
+        }
+        .ag-theme-streamlit .ag-row {
+            border-bottom: 1px solid var(--secondary-background-color);
+        }
+        .ag-theme-streamlit .ag-ltr .ag-cell-focus,
+        .ag-theme-streamlit .ag-cell-range-selected,
+        .ag-theme-streamlit .ag-cell-range-single-cell {
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .ag-theme-streamlit .ag-row-hover .ag-cell {
+            background: var(--secondary-background-color);
+        }
+        .ag-theme-streamlit .ag-checkbox-input-wrapper {
+            filter: invert(0.2);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     col_titulo, col_refresh = st.columns([4, 1])
     with col_titulo:
         st.markdown("## 💰 Dashboard Tesoureiro")
