@@ -1717,7 +1717,10 @@ def dashboard_tesoureiro(dados: dict):
     total_estornos = df_estornos_periodo["Valor (€)"].sum()
     saldo = total_recebimentos - total_estornos
 
-    st.markdown("#### 🧾 Recebimentos")
+    header_cols = st.columns([6, 1])
+    with header_cols[0]:
+        st.markdown("#### 🧾 Recebimentos")
+
     mensagem_sucesso_receb = st.session_state.pop("recebimentos_success_message", None)
     avisos_receb = st.session_state.pop("recebimentos_warning_messages", None)
     if mensagem_sucesso_receb:
@@ -1731,15 +1734,25 @@ def dashboard_tesoureiro(dados: dict):
         st.warning("⚠️ Não foi possível ler as opções do Airtable; a lista usa os valores já existentes.")
     pode_editar_recebimentos = (is_admin or is_tesoureiro) and not df_rec_periodo.empty
     modo_edicao_receb = False
-    if pode_editar_recebimentos:
-        modo_edicao_receb = st.toggle(
-            "Editar meios de pagamento",
-            value=False,
-            key="toggle_recebimentos_meio_pagamento",
-        )
-        if modo_edicao_receb and not meios_pagamento_opcoes:
-            st.warning("Não foi possível obter as opções de meio de pagamento. Edite diretamente no Airtable.")
-            modo_edicao_receb = False
+    with header_cols[1]:
+        if pode_editar_recebimentos:
+            modo_edicao_receb = st.toggle(
+                "Editar",
+                value=False,
+                key="toggle_recebimentos_meio_pagamento",
+                help="Permite alterar o meio de pagamento dos recebimentos mostrados.",
+            )
+        else:
+            st.toggle(
+                "Editar",
+                value=False,
+                key="toggle_recebimentos_meio_pagamento_disabled",
+                disabled=True,
+            )
+
+    if modo_edicao_receb and not meios_pagamento_opcoes:
+        st.warning("Não foi possível obter as opções de meio de pagamento. Edite diretamente no Airtable.")
+        modo_edicao_receb = False
 
     mensagem_recebimentos = (
         "ℹ️ Não há recebimentos registados."
@@ -1808,7 +1821,15 @@ def dashboard_tesoureiro(dados: dict):
             key="aggrid_recebimentos_edit",
         )
 
-        if st.button("💾 Guardar alterações", key="guardar_recebimentos"):
+        action_cols = st.columns([5, 1])
+        with action_cols[1]:
+            gravar_receb = st.button(
+                "💾 Guardar alterações",
+                key="guardar_recebimentos",
+                use_container_width=True,
+            )
+
+        if gravar_receb:
             df_editado = pd.DataFrame(grid_recebimentos["data"])
             if df_editado.empty or "__record_id" not in df_editado.columns:
                 st.info("Não foram detetadas alterações.")
