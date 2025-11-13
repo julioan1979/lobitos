@@ -3,6 +3,7 @@
 from typing import Any
 
 import json
+import re
 
 import streamlit as st
 import pandas as pd
@@ -13,6 +14,7 @@ import locale
 import unicodedata
 import time
 from datetime import date, datetime, timedelta
+from html import unescape
 from urllib.parse import urlparse, urlunparse
 import streamlit.components.v1 as components
 from st_aggrid import AgGrid, DataReturnMode, GridOptionsBuilder, GridUpdateMode, JsCode
@@ -61,6 +63,19 @@ def _map_airtable_color(nome_cor: str | None) -> tuple[str, str]:
     if not nome_cor:
         return "#f8f9fa", "#212529"
     return AIRTABLE_SINGLE_SELECT_COLORS.get(nome_cor, ("#f8f9fa", "#212529"))
+
+
+_HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
+
+
+def _limpar_html(texto: Any) -> Any:
+    """Remove eventuais tags HTML devolvendo apenas o texto legível."""
+
+    if not isinstance(texto, str):
+        return texto
+
+    sem_tags = _HTML_TAG_PATTERN.sub("", unescape(texto or ""))
+    return sem_tags.strip()
 
 # ======================
 # 1) Verificar login
@@ -1133,7 +1148,9 @@ def dashboard_tesoureiro(dados: dict):
             }
         )
         if "Meio de Pagamento" in df_limpo.columns:
-            df_limpo["Meio de Pagamento"] = df_limpo["Meio de Pagamento"].apply(normalizar_valor_selecao)
+            df_limpo["Meio de Pagamento"] = (
+                df_limpo["Meio de Pagamento"].apply(normalizar_valor_selecao).apply(_limpar_html)
+            )
         if "id" in df_limpo.columns:
             df_limpo["__record_id"] = df_limpo["id"]
             df_limpo.drop(columns=["id"], inplace=True)
@@ -1259,7 +1276,9 @@ def dashboard_tesoureiro(dados: dict):
             resultado["Data"] = pd.Series(dtype="datetime64[ns]")
 
         if "Meio de Pagamento" in resultado.columns:
-            resultado["Meio de Pagamento"] = resultado["Meio de Pagamento"].apply(normalizar_valor_selecao)
+            resultado["Meio de Pagamento"] = (
+                resultado["Meio de Pagamento"].apply(normalizar_valor_selecao).apply(_limpar_html)
+            )
 
         for coluna in expected_columns:
             if coluna not in resultado.columns:
@@ -1593,7 +1612,7 @@ def dashboard_tesoureiro(dados: dict):
                         record_id = linha.get("__record_id", "")
                         if not record_id:
                             continue
-                        valor_novo = linha.get("Meio de Pagamento", "")
+                        valor_novo = _limpar_html(linha.get("Meio de Pagamento", ""))
                         valor_antigo = mapa_original.get(record_id, "")
                         if pd.isna(valor_antigo):
                             valor_antigo = ""
