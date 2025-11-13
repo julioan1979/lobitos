@@ -1740,7 +1740,7 @@ def dashboard_tesoureiro(dados: dict):
                 "Editar",
                 value=False,
                 key="toggle_recebimentos_meio_pagamento",
-                help="Permite alterar o meio de pagamento dos recebimentos mostrados.",
+                help="Permite alterar o meio de pagamento dos recebimentos.",
             )
         else:
             st.toggle(
