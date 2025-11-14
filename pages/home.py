@@ -2119,6 +2119,54 @@ def dashboard_tesoureiro(dados: dict):
             return float(df_referencia.loc[mask, "Valor (€)"].sum())
         return 0.0
 
+    def _normalizar_meio_pagamento(valor: Any) -> str:
+        if isinstance(valor, list):
+            valores = [str(item).strip() for item in valor if str(item).strip()]
+            return ", ".join(valores) if valores else "—"
+        if pd.isna(valor):
+            return "—"
+        valor_str = str(valor).strip()
+        return valor_str if valor_str else "—"
+
+    def _resumo_por_meio_pagamento(chaves: set[str]) -> pd.DataFrame:
+        def _filtrar_por_categoria(df_base: pd.DataFrame) -> pd.DataFrame:
+            if df_base.empty or "Categoria" not in df_base.columns:
+                return pd.DataFrame()
+            mask = df_base["Categoria"].apply(lambda valor: any(_pertence_categoria(valor, chave) for chave in chaves))
+            if not mask.any():
+                return pd.DataFrame()
+            subset = df_base.loc[mask].copy()
+            if "Meio de Pagamento" in subset.columns:
+                subset["__meio"] = subset["Meio de Pagamento"].apply(_normalizar_meio_pagamento)
+            else:
+                subset["__meio"] = "—"
+            if "Valor (€)" not in subset.columns:
+                subset["Valor (€)"] = 0.0
+            return subset
+
+        recebimentos_subset = _filtrar_por_categoria(df_rec_periodo)
+        estornos_subset = _filtrar_por_categoria(df_estornos_periodo)
+        if recebimentos_subset.empty and estornos_subset.empty:
+            return pd.DataFrame()
+
+        recebidos = (
+            recebimentos_subset.groupby("__meio", dropna=False)["Valor (€)"].sum().rename("Recebido")
+            if not recebimentos_subset.empty
+            else pd.Series(dtype=float)
+        )
+        estornados = (
+            estornos_subset.groupby("__meio", dropna=False)["Valor (€)"].sum().rename("Estornado")
+            if not estornos_subset.empty
+            else pd.Series(dtype=float)
+        )
+
+        resumo = pd.concat([recebidos, estornados], axis=1).fillna(0.0)
+        resumo["Saldo"] = resumo["Recebido"] - resumo["Estornado"]
+        resumo.reset_index(inplace=True)
+        resumo.rename(columns={"__meio": "Meio"}, inplace=True)
+        resumo.sort_values(by=["Saldo", "Meio"], ascending=[False, True], inplace=True)
+        return resumo
+
     categorias_destacadas = [
         ({"lanches"}, "🥪 Lanches"),
         ({"quota mensal", "cota mensal"}, "🗓️ Quota Mensal"),
@@ -2141,6 +2189,19 @@ def dashboard_tesoureiro(dados: dict):
                 ),
                 delta_color="off",
             )
+            resumo_meios = _resumo_por_meio_pagamento(chaves_categoria)
+            if not resumo_meios.empty:
+                with st.expander("Ver por meio de pagamento", expanded=False):
+                    linhas_resumo = []
+                    for _, linha in resumo_meios.iterrows():
+                        linhas_resumo.append(
+                            f"- **{linha['Meio']}** · {formatar_moeda_euro(linha['Saldo'])} "
+                            f"_(Recebido {formatar_moeda_euro(linha['Recebido'])} · "
+                            f"Estornado {formatar_moeda_euro(linha['Estornado'])})_"
+                        )
+                    st.markdown("\n".join(linhas_resumo))
+            else:
+                st.caption("Sem movimentos no período.")
 
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
