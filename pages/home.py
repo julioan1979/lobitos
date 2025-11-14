@@ -2205,9 +2205,7 @@ def dashboard_tesoureiro(dados: dict):
                     linhas_resumo = []
                     for _, linha in resumo_meios.iterrows():
                         linhas_resumo.append(
-                            f"- **{linha['Meio']}** · {formatar_moeda_euro(linha['Saldo'])} "
-                            f"_(Recebido {formatar_moeda_euro(linha['Recebido'])} · "
-                            f"Estornado {formatar_moeda_euro(linha['Estornado'])})_"
+                            f"- **{linha['Meio']}** · {formatar_moeda_euro(linha['Saldo'])}"
                         )
                     st.markdown("\n".join(linhas_resumo))
             else:
