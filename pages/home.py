@@ -2160,13 +2160,12 @@ def dashboard_tesoureiro(dados: dict):
             else pd.Series(dtype=float)
         )
 
-        resumo = pd.concat([recebidos, estornados], axis=1).fillna(0.0)
-        for coluna in ("Recebido", "Estornado"):
-            if coluna not in resumo.columns:
-                resumo[coluna] = 0.0
+        resumo = pd.DataFrame({"Recebido": recebidos, "Estornado": estornados}).fillna(0.0)
+        if resumo.empty:
+            return pd.DataFrame()
         resumo["Saldo"] = resumo["Recebido"] - resumo["Estornado"]
         resumo.reset_index(inplace=True)
-        resumo.rename(columns={"__meio": "Meio"}, inplace=True)
+        resumo.rename(columns={"__meio": "Meio", "index": "Meio"}, inplace=True)
         resumo.sort_values(by=["Saldo", "Meio"], ascending=[False, True], inplace=True)
         return resumo
 
