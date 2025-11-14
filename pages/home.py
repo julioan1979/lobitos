@@ -2161,6 +2161,9 @@ def dashboard_tesoureiro(dados: dict):
         )
 
         resumo = pd.concat([recebidos, estornados], axis=1).fillna(0.0)
+        for coluna in ("Recebido", "Estornado"):
+            if coluna not in resumo.columns:
+                resumo[coluna] = 0.0
         resumo["Saldo"] = resumo["Recebido"] - resumo["Estornado"]
         resumo.reset_index(inplace=True)
         resumo.rename(columns={"__meio": "Meio"}, inplace=True)
