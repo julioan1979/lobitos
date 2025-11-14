@@ -2177,6 +2177,51 @@ def dashboard_tesoureiro(dados: dict):
         resumo.sort_values(by=["Saldo", "Meio"], ascending=[False, True], inplace=True)
         return resumo
 
+    def _resumo_meios_periodo() -> pd.DataFrame:
+        def _preparar(df_base: pd.DataFrame) -> pd.DataFrame:
+            if df_base.empty:
+                return pd.DataFrame()
+            subset = df_base.copy()
+            if "Meio de Pagamento" in subset.columns:
+                subset["__meio"] = subset["Meio de Pagamento"].apply(_normalizar_meio_pagamento)
+            else:
+                subset["__meio"] = "—"
+            if "Valor (€)" not in subset.columns:
+                subset["Valor (€)"] = 0.0
+            return subset
+
+        recebimentos_subset = _preparar(df_rec_periodo)
+        estornos_subset = _preparar(df_estornos_periodo)
+        if recebimentos_subset.empty and estornos_subset.empty:
+            return pd.DataFrame()
+
+        recebidos = (
+            recebimentos_subset.groupby("__meio", dropna=False)["Valor (€)"].sum().rename("Recebido")
+            if not recebimentos_subset.empty
+            else pd.Series(dtype=float)
+        )
+        estornados = (
+            estornos_subset.groupby("__meio", dropna=False)["Valor (€)"].sum().rename("Estornado")
+            if not estornos_subset.empty
+            else pd.Series(dtype=float)
+        )
+        indices_meios = pd.Index([])
+        if isinstance(recebidos, pd.Series):
+            indices_meios = indices_meios.union(recebidos.index)
+        if isinstance(estornados, pd.Series):
+            indices_meios = indices_meios.union(estornados.index)
+        resumo = pd.DataFrame(index=indices_meios)
+        resumo["Recebido"] = recebidos
+        resumo["Estornado"] = estornados
+        resumo.fillna(0.0, inplace=True)
+        if resumo.empty:
+            return pd.DataFrame()
+        resumo["Saldo"] = resumo["Recebido"] - resumo["Estornado"]
+        resumo.reset_index(inplace=True)
+        resumo.rename(columns={"__meio": "Meio", "index": "Meio"}, inplace=True)
+        resumo.sort_values(by=["Saldo", "Meio"], ascending=[False, True], inplace=True)
+        return resumo
+
     categorias_destacadas = [
         ({"lanches"}, "🥪 Lanches"),
         ({"quota mensal", "cota mensal"}, "🗓️ Quota Mensal"),
@@ -2210,6 +2255,44 @@ def dashboard_tesoureiro(dados: dict):
                     st.markdown("\n".join(linhas_resumo))
             else:
                 st.caption("Sem movimentos no período.")
+
+    resumo_meios_periodo = _resumo_meios_periodo()
+    if not resumo_meios_periodo.empty:
+        if "saldo_badges_css_applied" not in st.session_state:
+            st.markdown(
+                """
+                <style>
+                .saldo-periodo-badges {
+                    margin-top: 0.35rem;
+                }
+                .saldo-periodo-badges .badge-meio {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.35rem;
+                    background-color: rgba(148, 163, 184, 0.18);
+                    color: #e2e8f0;
+                    border-radius: 999px;
+                    padding: 0.18rem 0.7rem;
+                    font-size: 0.82rem;
+                    margin: 0.15rem 0.35rem 0.15rem 0;
+                    text-transform: none;
+                    letter-spacing: 0.01em;
+                }
+                .saldo-periodo-badges .badge-meio .valor {
+                    font-variant-numeric: tabular-nums;
+                    font-weight: 600;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.session_state["saldo_badges_css_applied"] = True
+
+        badges_html = "".join(
+            f"<span class='badge-meio'><span>{linha['Meio']}</span><span class='valor'>{formatar_moeda_euro(linha['Saldo'])}</span></span>"
+            for _, linha in resumo_meios_periodo.iterrows()
+        )
+        st.markdown(f"<div class='saldo-periodo-badges'>{badges_html}</div>", unsafe_allow_html=True)
 
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
