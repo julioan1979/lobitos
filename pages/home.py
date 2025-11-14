@@ -2160,7 +2160,15 @@ def dashboard_tesoureiro(dados: dict):
             else pd.Series(dtype=float)
         )
 
-        resumo = pd.DataFrame({"Recebido": recebidos, "Estornado": estornados}).fillna(0.0)
+        indices_meios = pd.Index([])
+        if isinstance(recebidos, pd.Series):
+            indices_meios = indices_meios.union(recebidos.index)
+        if isinstance(estornados, pd.Series):
+            indices_meios = indices_meios.union(estornados.index)
+        resumo = pd.DataFrame(index=indices_meios)
+        resumo["Recebido"] = recebidos
+        resumo["Estornado"] = estornados
+        resumo.fillna(0.0, inplace=True)
         if resumo.empty:
             return pd.DataFrame()
         resumo["Saldo"] = resumo["Recebido"] - resumo["Estornado"]
