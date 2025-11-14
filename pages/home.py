@@ -1667,6 +1667,30 @@ def dashboard_tesoureiro(dados: dict):
             return "Audit Log"
         return str(nome).strip()
 
+    def _extrair_campo_invalido_audit(mensagem: str) -> str | None:
+        """Identifica o campo rejeitado pelo Airtable quando a API devolve INVALID_VALUE_FOR_COLUMN."""
+        if not mensagem:
+            return None
+        marcador = 'Field "'
+        if marcador not in mensagem:
+            return None
+        restante = mensagem.split(marcador, 1)[-1]
+        if '"' not in restante:
+            return None
+        campo = restante.split('"', 1)[0].strip()
+        return campo or None
+
+    def _registar_campo_audit_ignorado(campo: str) -> None:
+        """Guarda no session_state os campos que já sabemos que não aceitam escrita direta."""
+        if not campo:
+            return
+        existentes = st.session_state.get("audit_log_skip_fields", [])
+        if not isinstance(existentes, list):
+            existentes = list(existentes) if existentes else []
+        if campo not in existentes:
+            existentes.append(campo)
+            st.session_state["audit_log_skip_fields"] = existentes
+
     periodo_key = "tesouraria_periodo_movimentos"
     hoje = pd.Timestamp.today().date()
     periodo_padrao: tuple[date, date] = (hoje, hoje)
@@ -1918,35 +1942,73 @@ def dashboard_tesoureiro(dados: dict):
                             continue
 
                         if tabela_audit is not None:
-                            try:
-                                tabela_audit.create(
-                                    {
-                                        "Tabela Alterada": "Recebimento",
-                                        "ID do Registo": record_id,
-                                        "Data da Mudança": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                        "Informação Antes": f"Meio de Pagamento: {valor_antigo or '-'}",
-                                        "Informação Depois": f"Meio de Pagamento: {valor_novo or '-'}",
-                                        "Mudança Resumida (AI)": f"Alterado de {valor_antigo or '-'} para {valor_novo or '-'}",
-                                        "Usuário": utilizador_atual or "desconhecido",
-                                        "Origem da Mudança": "Streamlit",
-                                    }
-                                )
-                            except Exception as exc:
-                                mensagem_exc = str(exc)
-                                if (
-                                    "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND" in mensagem_exc
-                                    or "Forbidden" in mensagem_exc
-                                ):
-                                    aviso_audit = (
-                                        f"Os recebimentos foram atualizados, mas não foi possível registar no Audit Log "
-                                        f"(tabela '{nome_tabela_audit}'). Verifique o nome da tabela e as permissões do token."
-                                    )
-                                    st.session_state["audit_log_indisponivel"] = True
-                                    st.session_state["audit_log_warning_message"] = aviso_audit
-                                    tabela_audit = None
-                                else:
-                                    aviso_audit = f"Falha ao registar no Audit Log: {mensagem_exc}"
-                                    st.session_state["audit_log_warning_message"] = aviso_audit
+                            campos_ignorar = st.session_state.get("audit_log_skip_fields", [])
+                            if not isinstance(campos_ignorar, list):
+                                campos_ignorar = list(campos_ignorar) if campos_ignorar else []
+                            base_registo_audit = {
+                                "Tabela Alterada": "Recebimento",
+                                "ID do Registo": record_id,
+                                "Data da Mudança": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                "Informação Antes": f"Meio de Pagamento: {valor_antigo or '-'}",
+                                "Informação Depois": f"Meio de Pagamento: {valor_novo or '-'}",
+                                "Mudança Resumida (AI)": f"Alterado de {valor_antigo or '-'} para {valor_novo or '-'}",
+                                "Usuário": utilizador_atual or "desconhecido",
+                                "Origem da Mudança": "Streamlit",
+                            }
+                            registo_audit = {
+                                campo: valor
+                                for campo, valor in base_registo_audit.items()
+                                if campo not in campos_ignorar
+                            }
+                            if registo_audit:
+                                try:
+                                    tabela_audit.create(registo_audit)
+                                except Exception as exc:
+                                    mensagem_exc = str(exc)
+                                    if (
+                                        "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND" in mensagem_exc
+                                        or "Forbidden" in mensagem_exc
+                                    ):
+                                        aviso_audit = (
+                                            f"Os recebimentos foram atualizados, mas não foi possível registar no Audit Log "
+                                            f"(tabela '{nome_tabela_audit}'). Verifique o nome da tabela e as permissões do token."
+                                        )
+                                        st.session_state["audit_log_indisponivel"] = True
+                                        st.session_state["audit_log_warning_message"] = aviso_audit
+                                        tabela_audit = None
+                                    else:
+                                        campo_invalido = None
+                                        if "INVALID_VALUE_FOR_COLUMN" in mensagem_exc:
+                                            campo_invalido = _extrair_campo_invalido_audit(mensagem_exc)
+                                        if campo_invalido and campo_invalido in registo_audit:
+                                            _registar_campo_audit_ignorado(campo_invalido)
+                                            registo_sem_campo = {
+                                                campo: valor
+                                                for campo, valor in registo_audit.items()
+                                                if campo != campo_invalido
+                                            }
+                                            if registo_sem_campo:
+                                                try:
+                                                    tabela_audit.create(registo_sem_campo)
+                                                except Exception as exc_retry:
+                                                    aviso_audit = (
+                                                        "Falha ao registar no Audit Log depois de remover o campo "
+                                                        f"'{campo_invalido}': {exc_retry}"
+                                                    )
+                                                    st.session_state["audit_log_warning_message"] = aviso_audit
+                                                else:
+                                                    aviso_audit = (
+                                                        f"Audit Log registado sem o campo '{campo_invalido}', que rejeitou o valor enviado."
+                                                    )
+                                                    st.session_state["audit_log_warning_message"] = aviso_audit
+                                                continue
+                                            aviso_audit = (
+                                                f"O campo '{campo_invalido}' do Audit Log rejeitou o valor enviado e foi ignorado."
+                                            )
+                                            st.session_state["audit_log_warning_message"] = aviso_audit
+                                            continue
+                                        aviso_audit = f"Falha ao registar no Audit Log: {mensagem_exc}"
+                                        st.session_state["audit_log_warning_message"] = aviso_audit
 
                         time.sleep(0.2)
 
