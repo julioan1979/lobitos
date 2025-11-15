@@ -1,7 +1,7 @@
 # Configuração base dos convites/banner.
 # Para activar novos convites, adicione entradas em [[convites]] e actualize "active_keys".
 
-active_keys = ["planeta-magusto"]
+active_keys = []
 
 [[convites]]
 key = "planeta-magusto"
