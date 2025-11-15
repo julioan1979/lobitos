@@ -2219,49 +2219,71 @@ def dashboard_tesoureiro(dados: dict):
 
     resumo_meios_periodo = _resumo_meios_periodo()
 
+    def _render_badges_meio(df_resumo: pd.DataFrame, class_name: str) -> None:
+        if df_resumo.empty:
+            return
+        if "saldo_badges_css_applied" not in st.session_state:
+            st.markdown(
+                """
+                <style>
+                .saldo-periodo-badges,
+                .recebido-periodo-badges,
+                .estornado-periodo-badges {
+                    margin-top: 0.35rem;
+                }
+                .saldo-periodo-badges .badge-meio,
+                .recebido-periodo-badges .badge-meio,
+                .estornado-periodo-badges .badge-meio {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.35rem;
+                    background-color: rgba(148, 163, 184, 0.18);
+                    color: #e2e8f0;
+                    border-radius: 999px;
+                    padding: 0.18rem 0.7rem;
+                    font-size: 0.82rem;
+                    margin: 0.15rem 0.35rem 0.15rem 0;
+                    text-transform: none;
+                    letter-spacing: 0.01em;
+                }
+                .saldo-periodo-badges .badge-meio .valor,
+                .recebido-periodo-badges .badge-meio .valor,
+                .estornado-periodo-badges .badge-meio .valor {
+                    font-variant-numeric: tabular-nums;
+                    font-weight: 600;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.session_state["saldo_badges_css_applied"] = True
+
+        badges_html = "".join(
+            f"<span class='badge-meio'><span>{linha['Meio']}</span>"
+            f"<span class='valor'>{formatar_moeda_euro(linha['Valor'])}</span></span>"
+            for _, linha in df_resumo.iterrows()
+        )
+        st.markdown(f"<div class='{class_name}'>{badges_html}</div>", unsafe_allow_html=True)
+
     col_metricas = st.columns(3)
     with col_metricas[0]:
         st.metric("Recebido no período", formatar_moeda_euro(total_recebimentos))
+        if not resumo_meios_periodo.empty:
+            badges_recebido = resumo_meios_periodo[["Meio", "Recebido"]].rename(columns={"Recebido": "Valor"})
+            badges_recebido = badges_recebido[badges_recebido["Valor"].abs() > 0]
+            _render_badges_meio(badges_recebido, "recebido-periodo-badges")
     with col_metricas[1]:
         st.metric("Estornado no período", formatar_moeda_euro(total_estornos))
+        if not resumo_meios_periodo.empty:
+            badges_estornado = resumo_meios_periodo[["Meio", "Estornado"]].rename(columns={"Estornado": "Valor"})
+            badges_estornado = badges_estornado[badges_estornado["Valor"].abs() > 0]
+            _render_badges_meio(badges_estornado, "estornado-periodo-badges")
     with col_metricas[2]:
         st.metric("Saldo do período", formatar_moeda_euro(saldo))
         if not resumo_meios_periodo.empty:
-            if "saldo_badges_css_applied" not in st.session_state:
-                st.markdown(
-                    """
-                    <style>
-                    .saldo-periodo-badges {
-                        margin-top: 0.35rem;
-                    }
-                    .saldo-periodo-badges .badge-meio {
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 0.35rem;
-                        background-color: rgba(148, 163, 184, 0.18);
-                        color: #e2e8f0;
-                        border-radius: 999px;
-                        padding: 0.18rem 0.7rem;
-                        font-size: 0.82rem;
-                        margin: 0.15rem 0.35rem 0.15rem 0;
-                        text-transform: none;
-                        letter-spacing: 0.01em;
-                    }
-                    .saldo-periodo-badges .badge-meio .valor {
-                        font-variant-numeric: tabular-nums;
-                        font-weight: 600;
-                    }
-                    </style>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                st.session_state["saldo_badges_css_applied"] = True
-
-            badges_html = "".join(
-                f"<span class='badge-meio'><span>{linha['Meio']}</span><span class='valor'>{formatar_moeda_euro(linha['Saldo'])}</span></span>"
-                for _, linha in resumo_meios_periodo.iterrows()
-            )
-            st.markdown(f"<div class='saldo-periodo-badges'>{badges_html}</div>", unsafe_allow_html=True)
+            badges_saldo = resumo_meios_periodo[["Meio", "Saldo"]].rename(columns={"Saldo": "Valor"})
+            badges_saldo = badges_saldo[badges_saldo["Valor"].abs() > 0]
+            _render_badges_meio(badges_saldo, "saldo-periodo-badges")
 
     categorias_destacadas = [
         ({"lanches"}, "🥪 Lanches"),
