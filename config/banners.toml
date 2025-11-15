@@ -12,6 +12,7 @@ link = "https://forms.fillout.com/t/3myp9UYEgZus"
 positions = ["login", "principal"]
 image = "static/planeta-magusto-banner.svg"
 theme = "space"
+active = false
 
 [themes.space]
 background = "#142146"
