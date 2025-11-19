@@ -1,6 +1,6 @@
 #pages/home.py
 #-*- coding: utf-8 -*-
-from typing import Any
+from typing import Any, Optional
 
 import streamlit as st
 import pandas as pd
@@ -2095,11 +2095,6 @@ def dashboard_tesoureiro(dados: dict):
         f"Período selecionado: {data_inicio_ts.strftime('%d/%m/%Y')} - {data_fim_ts.strftime('%d/%m/%Y')}"
     )
 
-    col_metricas = st.columns(3)
-    col_metricas[0].metric("Recebido no período", formatar_moeda_euro(total_recebimentos))
-    col_metricas[1].metric("Estornado no período", formatar_moeda_euro(total_estornos))
-    col_metricas[2].metric("Saldo do período", formatar_moeda_euro(saldo))
-
     def _pertence_categoria(valor, alvo: str) -> bool:
         if pd.isna(valor):
             return False
@@ -2177,6 +2172,157 @@ def dashboard_tesoureiro(dados: dict):
         resumo.sort_values(by=["Saldo", "Meio"], ascending=[False, True], inplace=True)
         return resumo
 
+    def _resumo_meios_periodo() -> pd.DataFrame:
+        def _preparar(df_base: pd.DataFrame) -> pd.DataFrame:
+            if df_base.empty:
+                return pd.DataFrame()
+            subset = df_base.copy()
+            if "Meio de Pagamento" in subset.columns:
+                subset["__meio"] = subset["Meio de Pagamento"].apply(_normalizar_meio_pagamento)
+            else:
+                subset["__meio"] = "—"
+            if "Valor (€)" not in subset.columns:
+                subset["Valor (€)"] = 0.0
+            return subset
+
+        recebimentos_subset = _preparar(df_rec_periodo)
+        estornos_subset = _preparar(df_estornos_periodo)
+        if recebimentos_subset.empty and estornos_subset.empty:
+            return pd.DataFrame()
+
+        recebidos = (
+            recebimentos_subset.groupby("__meio", dropna=False)["Valor (€)"].sum().rename("Recebido")
+            if not recebimentos_subset.empty
+            else pd.Series(dtype=float)
+        )
+        estornados = (
+            estornos_subset.groupby("__meio", dropna=False)["Valor (€)"].sum().rename("Estornado")
+            if not estornos_subset.empty
+            else pd.Series(dtype=float)
+        )
+        indices_meios = pd.Index([])
+        if isinstance(recebidos, pd.Series):
+            indices_meios = indices_meios.union(recebidos.index)
+        if isinstance(estornados, pd.Series):
+            indices_meios = indices_meios.union(estornados.index)
+        resumo = pd.DataFrame(index=indices_meios)
+        resumo["Recebido"] = recebidos
+        resumo["Estornado"] = estornados
+        resumo.fillna(0.0, inplace=True)
+        if resumo.empty:
+            return pd.DataFrame()
+        resumo["Saldo"] = resumo["Recebido"] - resumo["Estornado"]
+        resumo.reset_index(inplace=True)
+        resumo.rename(columns={"__meio": "Meio", "index": "Meio"}, inplace=True)
+        resumo.sort_values(by=["Saldo", "Meio"], ascending=[False, True], inplace=True)
+        return resumo
+
+    resumo_meios_periodo = _resumo_meios_periodo()
+
+    def _ensure_metric_card_css() -> None:
+        st.markdown(
+            """
+            <style>
+            .metric-card {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 0.65rem;
+                padding: 1.2rem 1.4rem;
+                background: rgba(15, 23, 42, 0.45);
+                border: 1px solid rgba(148, 163, 184, 0.22);
+                border-radius: 1rem;
+                box-shadow: 0 22px 45px -32px rgba(15, 23, 42, 0.85);
+                min-height: 100%;
+                width: 100%;
+                text-align: center;
+            }
+            .metric-card__title {
+                font-size: 0.78rem;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: #cbd5f5;
+                margin: 0;
+            }
+            .metric-card__value {
+                font-size: 2.05rem;
+                font-weight: 700;
+                color: #f8fafc;
+                line-height: 1.1;
+                margin: 0;
+            }
+            .metric-card__badges {
+                width: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 0.32rem;
+                margin-top: 0.2rem;
+            }
+            .metric-card__badges .badge-meio {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.3rem;
+                background-color: rgba(148, 163, 184, 0.24);
+                color: #e2e8f0;
+                border-radius: 999px;
+                padding: 0.16rem 0.72rem;
+                font-size: 0.8rem;
+                margin: 0;
+                text-transform: none;
+                letter-spacing: 0.01em;
+            }
+            .metric-card__badges .badge-meio .valor {
+                font-variant-numeric: tabular-nums;
+                font-weight: 600;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    def _render_metric_card(titulo: str, valor: float, badges_df: Optional[pd.DataFrame], class_name: str) -> None:
+        _ensure_metric_card_css()
+        badges_html = ""
+        if badges_df is not None and not badges_df.empty:
+            badges_html = " ".join(
+                f"<span class='badge-meio'><span>{linha['Meio']}</span>"
+                f"<span class='valor'>{formatar_moeda_euro(linha['Valor'])}</span></span>"
+                for _, linha in badges_df.iterrows()
+            )
+            if badges_html:
+                badges_html = f"<div class='metric-card__badges {class_name}'>{badges_html}</div>"
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-card__title">{titulo}</div>
+                <div class="metric-card__value">{formatar_moeda_euro(valor)}</div>
+                {badges_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    def _badges_por_coluna(df_resumo: Optional[pd.DataFrame], coluna: str) -> pd.DataFrame:
+        if df_resumo is None or df_resumo.empty:
+            return pd.DataFrame(columns=["Meio", "Valor"])
+        subset = df_resumo[["Meio", coluna]].rename(columns={coluna: "Valor"})
+        subset = subset[subset["Valor"].abs() > 0].copy()
+        return subset
+
+    col_metricas = st.columns(3)
+    with col_metricas[0]:
+        badges_recebido = _badges_por_coluna(resumo_meios_periodo, "Recebido")
+        _render_metric_card("Recebido no período", total_recebimentos, badges_recebido, "recebido-periodo-badges")
+    with col_metricas[1]:
+        badges_estornado = _badges_por_coluna(resumo_meios_periodo, "Estornado")
+        _render_metric_card("Estornado no período", total_estornos, badges_estornado, "estornado-periodo-badges")
+    with col_metricas[2]:
+        badges_saldo = _badges_por_coluna(resumo_meios_periodo, "Saldo")
+        _render_metric_card("Saldo do período", saldo, badges_saldo, "saldo-periodo-badges")
+
     categorias_destacadas = [
         ({"lanches"}, "🥪 Lanches"),
         ({"quota mensal", "cota mensal"}, "🗓️ Quota Mensal"),
@@ -2184,32 +2330,103 @@ def dashboard_tesoureiro(dados: dict):
     ]
 
     st.markdown("##### Detalhe por categoria")
+
+    def _ensure_categoria_card_css() -> None:
+        st.markdown(
+            """
+            <style>
+            .categoria-card {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 0.55rem;
+                padding: 0.95rem 1.1rem;
+                background: rgba(15, 23, 42, 0.35);
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 0.85rem;
+                width: 100%;
+                min-height: 100%;
+                text-align: center;
+            }
+            .categoria-card__title {
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: #e5e7eb;
+                display: inline-flex;
+                align-items: center;
+                gap: 0.45rem;
+                margin: 0;
+            }
+            .categoria-card__value {
+                font-size: 1.65rem;
+                font-weight: 700;
+                color: #f8fafc;
+                margin: 0;
+                line-height: 1.15;
+            }
+            .categoria-card__delta {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                background: rgba(148, 163, 184, 0.24);
+                color: #e2e8f0;
+                border-radius: 999px;
+                padding: 0.18rem 0.75rem;
+                font-size: 0.78rem;
+                letter-spacing: 0.01em;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    def _render_categoria_card(
+        label: str,
+        valor: float,
+        delta_recebido: float,
+        delta_estornado: float,
+        resumo_meios: Optional[pd.DataFrame],
+    ) -> None:
+        _ensure_categoria_card_css()
+        delta_html = (
+            f"<div class='categoria-card__delta'>⬆️ Recebido {formatar_moeda_euro(delta_recebido)} · "
+            f"⬇️ Estornado {formatar_moeda_euro(delta_estornado)}</div>"
+        )
+        st.markdown(
+            f"""
+            <div class="categoria-card">
+                <div class="categoria-card__title">{label}</div>
+                <div class="categoria-card__value">{formatar_moeda_euro(valor)}</div>
+                {delta_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if resumo_meios is not None and not resumo_meios.empty:
+            with st.expander("Ver por meio de pagamento", expanded=False):
+                linhas_resumo = []
+                for _, linha in resumo_meios.iterrows():
+                    linhas_resumo.append(
+                        f"- **{linha['Meio']}** · {formatar_moeda_euro(linha['Saldo'])}"
+                    )
+                st.markdown("\n".join(linhas_resumo))
+        else:
+            st.caption("Sem movimentos no período.")
     cols_categorias = st.columns(len(categorias_destacadas))
     for (chaves_categoria, label_categoria), coluna in zip(categorias_destacadas, cols_categorias):
         recebido_categoria = sum(_total_por_categoria(df_rec_periodo, chave) for chave in chaves_categoria)
         estornado_categoria = sum(_total_por_categoria(df_estornos_periodo, chave) for chave in chaves_categoria)
         saldo_categoria = recebido_categoria - estornado_categoria
         with coluna:
-            coluna.metric(
-                label_categoria,
-                formatar_moeda_euro(saldo_categoria),
-                delta=(
-                    f"Recebido {formatar_moeda_euro(recebido_categoria)} · "
-                    f"Estornado {formatar_moeda_euro(estornado_categoria)}"
-                ),
-                delta_color="off",
-            )
             resumo_meios = _resumo_por_meio_pagamento(chaves_categoria)
-            if not resumo_meios.empty:
-                with st.expander("Ver por meio de pagamento", expanded=False):
-                    linhas_resumo = []
-                    for _, linha in resumo_meios.iterrows():
-                        linhas_resumo.append(
-                            f"- **{linha['Meio']}** · {formatar_moeda_euro(linha['Saldo'])}"
-                        )
-                    st.markdown("\n".join(linhas_resumo))
-            else:
-                st.caption("Sem movimentos no período.")
+            _render_categoria_card(
+                label_categoria,
+                saldo_categoria,
+                recebido_categoria,
+                estornado_categoria,
+                resumo_meios if not resumo_meios.empty else None,
+            )
 
 def dashboard_admin(dados: dict):
     st.markdown("## 👑 Dashboard Admin")
