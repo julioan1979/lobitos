@@ -2237,6 +2237,8 @@ def dashboard_tesoureiro(dados: dict):
                 border-radius: 1rem;
                 box-shadow: 0 22px 45px -32px rgba(15, 23, 42, 0.85);
                 min-height: 100%;
+                width: 100%;
+                text-align: center;
             }
             .metric-card__title {
                 font-size: 0.78rem;
