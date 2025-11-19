@@ -2230,6 +2230,11 @@ def dashboard_tesoureiro(dados: dict):
                 .recebido-periodo-badges,
                 .estornado-periodo-badges {
                     margin-top: 0.15rem;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 0.35rem;
                 }
                 .saldo-periodo-badges .badge-meio,
                 .recebido-periodo-badges .badge-meio,
@@ -2242,7 +2247,7 @@ def dashboard_tesoureiro(dados: dict):
                     border-radius: 999px;
                     padding: 0.18rem 0.7rem;
                     font-size: 0.82rem;
-                    margin: 0.15rem 0.35rem 0.15rem 0;
+                    margin: 0;
                     text-transform: none;
                     letter-spacing: 0.01em;
                 }
