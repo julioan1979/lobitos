@@ -2220,8 +2220,6 @@ def dashboard_tesoureiro(dados: dict):
     resumo_meios_periodo = _resumo_meios_periodo()
 
     def _ensure_metric_card_css() -> None:
-        if st.session_state.get("metric_cards_css_applied"):
-            return
         st.markdown(
             """
             <style>
@@ -2284,13 +2282,12 @@ def dashboard_tesoureiro(dados: dict):
             """,
             unsafe_allow_html=True,
         )
-        st.session_state["metric_cards_css_applied"] = True
 
     def _render_metric_card(titulo: str, valor: float, badges_df: Optional[pd.DataFrame], class_name: str) -> None:
         _ensure_metric_card_css()
         badges_html = ""
         if badges_df is not None and not badges_df.empty:
-            badges_html = "".join(
+            badges_html = " ".join(
                 f"<span class='badge-meio'><span>{linha['Meio']}</span>"
                 f"<span class='valor'>{formatar_moeda_euro(linha['Valor'])}</span></span>"
                 for _, linha in badges_df.iterrows()
