@@ -2261,7 +2261,10 @@ def dashboard_tesoureiro(dados: dict):
                     margin-bottom: 0.05rem !important;
                 }
                 div[data-testid="metric-container"] div[data-testid="stMetricDelta"] {
-                    margin-top: 0.12rem !important;
+                    margin-top: 0.08rem !important;
+                }
+                div[data-testid="metric-container"] {
+                    margin-bottom: 0.05rem !important;
                 }
                 </style>
                 """,
