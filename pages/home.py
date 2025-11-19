@@ -2229,7 +2229,7 @@ def dashboard_tesoureiro(dados: dict):
                 .saldo-periodo-badges,
                 .recebido-periodo-badges,
                 .estornado-periodo-badges {
-                    margin-top: 0.35rem;
+                    margin-top: 0.25rem;
                 }
                 .saldo-periodo-badges .badge-meio,
                 .recebido-periodo-badges .badge-meio,
