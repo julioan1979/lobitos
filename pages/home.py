@@ -1,6 +1,6 @@
 #pages/home.py
 #-*- coding: utf-8 -*-
-from typing import Any
+from typing import Any, Optional
 
 import streamlit as st
 import pandas as pd
@@ -2219,85 +2219,110 @@ def dashboard_tesoureiro(dados: dict):
 
     resumo_meios_periodo = _resumo_meios_periodo()
 
-    def _render_badges_meio(df_resumo: pd.DataFrame, class_name: str) -> None:
-        if df_resumo.empty:
+    def _ensure_metric_card_css() -> None:
+        if st.session_state.get("metric_cards_css_applied"):
             return
-        if "saldo_badges_css_applied" not in st.session_state:
-            st.markdown(
-                """
-                <style>
-                .saldo-periodo-badges,
-                .recebido-periodo-badges,
-                .estornado-periodo-badges {
-                    margin-top: 0.15rem;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    flex-wrap: wrap;
-                    gap: 0.35rem;
-                }
-                .saldo-periodo-badges .badge-meio,
-                .recebido-periodo-badges .badge-meio,
-                .estornado-periodo-badges .badge-meio {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.35rem;
-                    background-color: rgba(148, 163, 184, 0.18);
-                    color: #e2e8f0;
-                    border-radius: 999px;
-                    padding: 0.18rem 0.7rem;
-                    font-size: 0.82rem;
-                    margin: 0;
-                    text-transform: none;
-                    letter-spacing: 0.01em;
-                }
-                .saldo-periodo-badges .badge-meio .valor,
-                .recebido-periodo-badges .badge-meio .valor,
-                .estornado-periodo-badges .badge-meio .valor {
-                    font-variant-numeric: tabular-nums;
-                    font-weight: 600;
-                }
-                div[data-testid="metric-container"] div[data-testid="stMetricValue"] > div {
-                    margin-bottom: 0.05rem !important;
-                }
-                div[data-testid="metric-container"] div[data-testid="stMetricDelta"] {
-                    margin-top: 0.08rem !important;
-                }
-                div[data-testid="metric-container"] {
-                    margin-bottom: 0.05rem !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.session_state["saldo_badges_css_applied"] = True
-
-        badges_html = "".join(
-            f"<span class='badge-meio'><span>{linha['Meio']}</span>"
-            f"<span class='valor'>{formatar_moeda_euro(linha['Valor'])}</span></span>"
-            for _, linha in df_resumo.iterrows()
+        st.markdown(
+            """
+            <style>
+            .metric-card {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 0.65rem;
+                padding: 1.2rem 1.4rem;
+                background: rgba(15, 23, 42, 0.45);
+                border: 1px solid rgba(148, 163, 184, 0.22);
+                border-radius: 1rem;
+                box-shadow: 0 22px 45px -32px rgba(15, 23, 42, 0.85);
+                min-height: 100%;
+            }
+            .metric-card__title {
+                font-size: 0.78rem;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: #cbd5f5;
+                margin: 0;
+            }
+            .metric-card__value {
+                font-size: 2.05rem;
+                font-weight: 700;
+                color: #f8fafc;
+                line-height: 1.1;
+                margin: 0;
+            }
+            .metric-card__badges {
+                width: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 0.32rem;
+                margin-top: 0.2rem;
+            }
+            .metric-card__badges .badge-meio {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.3rem;
+                background-color: rgba(148, 163, 184, 0.24);
+                color: #e2e8f0;
+                border-radius: 999px;
+                padding: 0.16rem 0.72rem;
+                font-size: 0.8rem;
+                margin: 0;
+                text-transform: none;
+                letter-spacing: 0.01em;
+            }
+            .metric-card__badges .badge-meio .valor {
+                font-variant-numeric: tabular-nums;
+                font-weight: 600;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
         )
-        st.markdown(f"<div class='{class_name}'>{badges_html}</div>", unsafe_allow_html=True)
+        st.session_state["metric_cards_css_applied"] = True
+
+    def _render_metric_card(titulo: str, valor: float, badges_df: Optional[pd.DataFrame], class_name: str) -> None:
+        _ensure_metric_card_css()
+        badges_html = ""
+        if badges_df is not None and not badges_df.empty:
+            badges_html = "".join(
+                f"<span class='badge-meio'><span>{linha['Meio']}</span>"
+                f"<span class='valor'>{formatar_moeda_euro(linha['Valor'])}</span></span>"
+                for _, linha in badges_df.iterrows()
+            )
+            if badges_html:
+                badges_html = f"<div class='metric-card__badges {class_name}'>{badges_html}</div>"
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-card__title">{titulo}</div>
+                <div class="metric-card__value">{formatar_moeda_euro(valor)}</div>
+                {badges_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    def _badges_por_coluna(df_resumo: Optional[pd.DataFrame], coluna: str) -> pd.DataFrame:
+        if df_resumo is None or df_resumo.empty:
+            return pd.DataFrame(columns=["Meio", "Valor"])
+        subset = df_resumo[["Meio", coluna]].rename(columns={coluna: "Valor"})
+        subset = subset[subset["Valor"].abs() > 0].copy()
+        return subset
 
     col_metricas = st.columns(3)
     with col_metricas[0]:
-        st.metric("Recebido no período", formatar_moeda_euro(total_recebimentos))
-        if not resumo_meios_periodo.empty:
-            badges_recebido = resumo_meios_periodo[["Meio", "Recebido"]].rename(columns={"Recebido": "Valor"})
-            badges_recebido = badges_recebido[badges_recebido["Valor"].abs() > 0]
-            _render_badges_meio(badges_recebido, "recebido-periodo-badges")
+        badges_recebido = _badges_por_coluna(resumo_meios_periodo, "Recebido")
+        _render_metric_card("Recebido no período", total_recebimentos, badges_recebido, "recebido-periodo-badges")
     with col_metricas[1]:
-        st.metric("Estornado no período", formatar_moeda_euro(total_estornos))
-        if not resumo_meios_periodo.empty:
-            badges_estornado = resumo_meios_periodo[["Meio", "Estornado"]].rename(columns={"Estornado": "Valor"})
-            badges_estornado = badges_estornado[badges_estornado["Valor"].abs() > 0]
-            _render_badges_meio(badges_estornado, "estornado-periodo-badges")
+        badges_estornado = _badges_por_coluna(resumo_meios_periodo, "Estornado")
+        _render_metric_card("Estornado no período", total_estornos, badges_estornado, "estornado-periodo-badges")
     with col_metricas[2]:
-        st.metric("Saldo do período", formatar_moeda_euro(saldo))
-        if not resumo_meios_periodo.empty:
-            badges_saldo = resumo_meios_periodo[["Meio", "Saldo"]].rename(columns={"Saldo": "Valor"})
-            badges_saldo = badges_saldo[badges_saldo["Valor"].abs() > 0]
-            _render_badges_meio(badges_saldo, "saldo-periodo-badges")
+        badges_saldo = _badges_por_coluna(resumo_meios_periodo, "Saldo")
+        _render_metric_card("Saldo do período", saldo, badges_saldo, "saldo-periodo-badges")
 
     categorias_destacadas = [
         ({"lanches"}, "🥪 Lanches"),
