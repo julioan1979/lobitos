@@ -2257,6 +2257,12 @@ def dashboard_tesoureiro(dados: dict):
                     font-variant-numeric: tabular-nums;
                     font-weight: 600;
                 }
+                div[data-testid="metric-container"] div[data-testid="stMetricValue"] > div {
+                    margin-bottom: 0.05rem !important;
+                }
+                div[data-testid="metric-container"] div[data-testid="stMetricDelta"] {
+                    margin-top: 0.12rem !important;
+                }
                 </style>
                 """,
                 unsafe_allow_html=True,
