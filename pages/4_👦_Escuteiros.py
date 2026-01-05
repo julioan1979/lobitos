@@ -157,6 +157,7 @@ item_columns = [
 ]
 
 def _render_menu_info(frame: pd.DataFrame) -> None:
+    """Render menu information with proper datetime handling."""
     if frame is None or frame.empty:
         st.info('Sem menu publicado para os próximos lanches.')
         return
@@ -165,9 +166,11 @@ def _render_menu_info(frame: pd.DataFrame) -> None:
     if col_data is None:
         st.info('Sem menu publicado para os próximos lanches.')
         return
+    # Extract date value from list if needed
     frame["__data_menu"] = frame[col_data].apply(
         lambda valor: valor[0] if isinstance(valor, list) and valor else valor
     )
+    # Ensure proper datetime conversion to avoid comparison errors
     frame["__data_menu"] = pd.to_datetime(frame["__data_menu"], errors="coerce")
     frame = frame[frame["__data_menu"].notna()].sort_values("__data_menu")
     if frame.empty:
