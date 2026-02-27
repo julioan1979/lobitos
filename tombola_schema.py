@@ -36,10 +36,23 @@ def _normalize_field_options(field_type: str, options: Dict[str, Any] | None) ->
     return None
 
 
+def _create_field_with_explicit_payload(table, name: str, field_type: str, options: Dict[str, Any] | None = None) -> None:
+    """Cria campo garantindo envio explícito de `options` quando necessário.
+
+    O `pyairtable.Table.create_field` omite a chave `options` quando recebe
+    um dict vazio (`{}`), porque faz `if options:`. Para tipos como `checkbox`
+    e `date`, a Meta API exige a presença explícita de `options`, mesmo vazio.
+    """
+    request: Dict[str, Any] = {"name": name, "type": field_type}
+    if options is not None:
+        request["options"] = options
+    table.api.post(table.urls.fields, json=request)
+
+
 def _ensure_field(table, name: str, field_type: str, options: Dict[str, Any] | None = None) -> bool:
     if _field_exists(table, name):
         return False
-    table.create_field(name, field_type, options=_normalize_field_options(field_type, options))
+    _create_field_with_explicit_payload(table, name, field_type, options=_normalize_field_options(field_type, options))
     return True
 
 
