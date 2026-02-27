@@ -259,11 +259,10 @@ def registrar_transferencia(
     tabela_inv = api.table(base_id, "Inventario")
     item = tabela_inv.get(item_id)
     campos_item = item.get("fields", {})
+    caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
     atual = _to_float(campos_item.get("QuantidadeAtual"))
     if quantidade > atual:
         raise ValueError("Operação inválida: quantidade transferida excede stock disponível.")
-    caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
-
     return _atualizar_inventario_e_movimento(
         api,
         base_id,
@@ -379,7 +378,9 @@ def transferir_item_caixa(
     return criar_movimento(
         api,
         base_id,
+        tipo="Transferência",
         item_id=item_id,
+        caixa_origem_id=caixa_origem_id,
         caixa_destino_id=caixa_destino_id,
         quantidade=quantidade,
         executado_por=executado_por,
