@@ -715,6 +715,36 @@ with aba_inventario:
                     st.error(str(exc))
 
 with aba_patrocinios:
+    st.subheader("Adicionar patrocinador")
+    with st.form("form_add_patrocinador_tombola"):
+        nome_patrocinador = st.text_input("Nome do patrocinador")
+        adicionar_patrocinador = st.form_submit_button("Adicionar")
+
+    if adicionar_patrocinador:
+        nome_patrocinador = (nome_patrocinador or "").strip()
+        if not nome_patrocinador:
+            st.error("Nome do patrocinador é obrigatório.")
+        else:
+            try:
+                patrocinador_id = _ensure_patrocinador_id(nome_patrocinador)
+                if patrocinador_id:
+                    st.success("Patrocinador confirmado com sucesso.")
+                    st.rerun()
+                else:
+                    st.error("Não foi possível criar ou localizar o patrocinador.")
+            except Exception as exc:
+                st.error(f"Erro ao adicionar patrocinador: {exc}")
+
+    df_patrocinadores = _table_df(_table_ref("PATROCINADORES"))
+    if not df_patrocinadores.empty:
+        st.caption("Patrocinadores atuais")
+        cols_patrocinadores = [c for c in ["Nome"] if c in df_patrocinadores.columns]
+        st.dataframe(
+            df_patrocinadores[cols_patrocinadores] if cols_patrocinadores else df_patrocinadores,
+            use_container_width=True,
+            hide_index=True,
+        )
+
     df_pat = _table_df(_table_ref("REGISTO_PATROCINIOS"))
     relatorio_batch = st.session_state.pop("patrocinios_batch_relatorio", None)
     if relatorio_batch:
