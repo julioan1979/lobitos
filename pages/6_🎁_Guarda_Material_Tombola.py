@@ -169,10 +169,35 @@ def _template_lote_bytes() -> bytes:
         ]
     )
     buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_template.to_excel(writer, index=False, sheet_name="Lote")
-    buffer.seek(0)
-    return buffer.getvalue()
+    for engine in ("openpyxl", "xlsxwriter"):
+        try:
+            with pd.ExcelWriter(buffer, engine=engine) as writer:
+                df_template.to_excel(writer, index=False, sheet_name="Lote")
+            buffer.seek(0)
+            return buffer.getvalue()
+        except ModuleNotFoundError:
+            buffer = io.BytesIO()
+
+    return df_template.to_csv(index=False).encode("utf-8")
+
+
+def _template_lote_download_config() -> tuple[bytes, str, str, str]:
+    template = _template_lote_bytes()
+    try:
+        pd.read_excel(io.BytesIO(template), nrows=0)
+        return (
+            template,
+            "template_lote_tombola.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Descarregar template Excel",
+        )
+    except Exception:
+        return (
+            template,
+            "template_lote_tombola.csv",
+            "text/csv",
+            "Descarregar template CSV",
+        )
 
 
 def _ler_arquivo_lote(uploaded_file) -> pd.DataFrame:
@@ -460,11 +485,12 @@ with aba_inventario:
             "Colunas obrigatórias: NomeItem, Tipo, Quantidade, Notas, Categoria. "
             "Evento é opcional."
         )
+        template_data, template_nome, template_mime, template_label = _template_lote_download_config()
         st.download_button(
-            "Descarregar template Excel",
-            data=_template_lote_bytes(),
-            file_name="template_lote_tombola.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            template_label,
+            data=template_data,
+            file_name=template_nome,
+            mime=template_mime,
             key="download_template_lote_tombola",
         )
 
