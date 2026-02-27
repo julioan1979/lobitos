@@ -4,8 +4,9 @@ import pandas as pd
 import streamlit as st
 from pyairtable import Api
 
-from airtable_config import context_labels, get_tombola_credentials
+from airtable_config import context_labels, get_tombola_credentials, get_tombola_table_ref
 from menu import menu_with_redirect
+from tombola_schema import ensure_tombola_schema
 from tombola_utils import (
     ajustar_stock_item,
     criar_movimento,
@@ -46,13 +47,96 @@ if not executado_por:
     st.stop()
 
 
+TABLES = {
+    "INVENTARIO": get_tombola_table_ref("INVENTARIO", "Inventario"),
+    "CAIXAS": get_tombola_table_ref("CAIXAS", "Caixas"),
+    "PATROCINADORES": get_tombola_table_ref("PATROCINADORES", "Patrocinadores"),
+    "REGISTO_PATROCINIOS": get_tombola_table_ref("REGISTO_PATROCINIOS", "RegistoPatrocinios"),
+    "EVENTOS": get_tombola_table_ref("EVENTOS", "Eventos"),
+    "MOVIMENTOS": get_tombola_table_ref("MOVIMENTOS", "Movimentos"),
+}
+
+
+def _table_ref(chave: str) -> str:
+    return TABLES[chave]
+
+
+
+
+def _tabelas_em_falta() -> list[str]:
+    base = api.base(BASE_ID)
+    tabelas = base.tables()
+    disponiveis = {tbl.name for tbl in tabelas} | {tbl.id for tbl in tabelas}
+    return [ref for ref in TABLES.values() if ref not in disponiveis]
+
+
+def _is_schema_related_error(exc: Exception) -> bool:
+    mensagem = str(exc).upper()
+    marcadores = [
+        "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND",
+        "MODEL_NOT_FOUND",
+        "UNKNOWN_TABLE",
+        "TABLE NOT FOUND",
+    ]
+    return any(marcador in mensagem for marcador in marcadores)
+
+
+def _auto_bootstrap_schema(trigger: str = "startup") -> bool:
+    """Auto-corrige schema só quando detetado erro de schema/modelo."""
+    chave_execucao = f"tombola_schema_bootstrap_done::{BASE_ID}::{trigger}"
+    if st.session_state.get(chave_execucao):
+        return False
+
+    st.session_state[chave_execucao] = True
+
+    try:
+        resultado = ensure_tombola_schema(api, BASE_ID, TABLES)
+    except Exception as exc:
+        st.warning(f"Não foi possível auto-inicializar o schema da Tômbola: {exc}")
+        return False
+
+    total_criados = len(resultado["created_tables"]) + len(resultado["created_fields"])
+    if total_criados > 0:
+        st.info(
+            "Schema da Tômbola atualizado automaticamente após erro de schema "
+            f"({len(resultado['created_tables'])} tabelas e {len(resultado['created_fields'])} campos criados)."
+        )
+
+    if resultado["errors"]:
+        st.warning(
+            "Foram detetados problemas ao atualizar o schema automaticamente. "
+            "Valide permissões do token (scope schema.bases:write) e referências TOMBOLA_TABLE_*."
+        )
+        for erro in resultado["errors"]:
+            st.error(erro)
+
+    try:
+        faltam = _tabelas_em_falta()
+    except Exception:
+        return True
+    if faltam:
+        st.warning(
+            "A base da Tômbola ainda não tem o schema mínimo completo. "
+            f"Tabelas em falta: {', '.join(faltam)}."
+        )
+    return True
+
+
 def _table_df(nome_tabela: str) -> pd.DataFrame:
     """Stock real vive no Inventário; Movimentos é auditoria e tabelas suportam contexto."""
     try:
         registos = api.table(BASE_ID, nome_tabela).all()
     except Exception as exc:
-        st.warning(f"Não foi possível carregar a tabela '{nome_tabela}': {exc}")
-        return pd.DataFrame()
+        if _is_schema_related_error(exc):
+            _auto_bootstrap_schema(trigger=nome_tabela)
+            try:
+                registos = api.table(BASE_ID, nome_tabela).all()
+            except Exception as retry_exc:
+                st.warning(f"Não foi possível carregar a tabela '{nome_tabela}' após auto-correção de schema: {retry_exc}")
+                return pd.DataFrame()
+        else:
+            st.warning(f"Não foi possível carregar a tabela '{nome_tabela}': {exc}")
+            return pd.DataFrame()
     return pd.DataFrame([{"id": r["id"], **r.get("fields", {})} for r in registos])
 
 
@@ -67,7 +151,7 @@ def _ensure_patrocinador_id(nome: str) -> str | None:
     nome = (nome or "").strip()
     if not nome:
         return None
-    tabela = api.table(BASE_ID, "Patrocinadores")
+    tabela = api.table(BASE_ID, _table_ref("PATROCINADORES"))
     try:
         registos = tabela.all()
     except Exception:
@@ -89,7 +173,7 @@ def _processar_patrocinio(registo: dict) -> None:
     if not descricao or quantidade <= 0:
         raise ValueError("Registo inválido: DescricaoItem e Quantidade > 0 são obrigatórios.")
 
-    tabela_inventario = api.table(BASE_ID, "Inventario")
+    tabela_inventario = api.table(BASE_ID, _table_ref("INVENTARIO"))
     inventario_registos = tabela_inventario.all()
     item_existente = encontrar_item_por_nome(inventario_registos, descricao)
 
@@ -141,7 +225,7 @@ def _processar_patrocinio(registo: dict) -> None:
             notas=str(campos.get("Observacoes") or "").strip(),
         )
 
-    api.table(BASE_ID, "RegistoPatrocinios").update(registo["id"], {"Processado": True, "Estado": "Recebido"})
+    api.table(BASE_ID, _table_ref("REGISTO_PATROCINIOS")).update(registo["id"], {"Processado": True, "Estado": "Recebido"})
 
 
 st.title("🎁 Guarda Material - Tômbola")
@@ -150,8 +234,8 @@ aba_dashboard, aba_inventario, aba_patrocinios, aba_eventos, aba_caixas = st.tab
 )
 
 with aba_dashboard:
-    df_inv = _table_df("Inventario")
-    df_caixas = _table_df("Caixas")
+    df_inv = _table_df(_table_ref("INVENTARIO"))
+    df_caixas = _table_df(_table_ref("CAIXAS"))
     total_itens = len(df_inv.index)
     stock_total = pd.to_numeric(df_inv.get("QuantidadeAtual"), errors="coerce").fillna(0).sum() if not df_inv.empty else 0
     baixo_stock = 0
@@ -180,8 +264,8 @@ with aba_dashboard:
     st.caption(f"Caixas registadas: {len(df_caixas.index)}")
 
 with aba_inventario:
-    df_inv = _table_df("Inventario")
-    df_caixas = _table_df("Caixas")
+    df_inv = _table_df(_table_ref("INVENTARIO"))
+    df_caixas = _table_df(_table_ref("CAIXAS"))
     caixa_options = df_caixas["id"].tolist() if not df_caixas.empty and "id" in df_caixas.columns else []
     caixa_label = dict(zip(df_caixas.get("id", []), df_caixas.get("CodigoCaixa", []))) if not df_caixas.empty else {}
 
@@ -207,7 +291,7 @@ with aba_inventario:
                 campos["Categoria"] = categoria.strip()
             if caixa_id:
                 campos["CaixaAtual"] = [caixa_id]
-            novo = api.table(BASE_ID, "Inventario").create(campos)
+            novo = api.table(BASE_ID, _table_ref("INVENTARIO")).create(campos)
             criar_movimento(
                 api,
                 BASE_ID,
@@ -280,7 +364,7 @@ with aba_inventario:
                     st.error(str(exc))
 
 with aba_patrocinios:
-    df_pat = _table_df("RegistoPatrocinios")
+    df_pat = _table_df(_table_ref("REGISTO_PATROCINIOS"))
     if df_pat.empty:
         st.info("Sem registos em RegistoPatrocinios.")
     else:
@@ -296,7 +380,7 @@ with aba_patrocinios:
                 label = f"Processar {row.get('DescricaoItem', reg_id)}"
                 if st.button(label, key=f"proc_pat_{reg_id}"):
                     try:
-                        registo = api.table(BASE_ID, "RegistoPatrocinios").get(reg_id)
+                        registo = api.table(BASE_ID, _table_ref("REGISTO_PATROCINIOS")).get(reg_id)
                         if registo.get("fields", {}).get("Processado"):
                             st.warning("Este patrocínio já tinha sido processado.")
                         else:
@@ -319,7 +403,7 @@ with aba_eventos:
         if not nome.strip() or not local.strip():
             st.error("NomeEvento e Local são obrigatórios.")
         else:
-            api.table(BASE_ID, "Eventos").create(
+            api.table(BASE_ID, _table_ref("EVENTOS")).create(
                 {
                     "NomeEvento": nome.strip(),
                     "Tipo": tipo,
@@ -332,8 +416,8 @@ with aba_eventos:
             st.rerun()
 
     st.subheader("Registar saída para evento")
-    df_eventos = _table_df("Eventos")
-    df_inv = _table_df("Inventario")
+    df_eventos = _table_df(_table_ref("EVENTOS"))
+    df_inv = _table_df(_table_ref("INVENTARIO"))
     if df_eventos.empty or df_inv.empty:
         st.info("Precisa de pelo menos 1 evento e 1 item para registar saídas.")
     else:
@@ -378,7 +462,7 @@ with aba_caixas:
         if not codigo.strip() or not local.strip():
             st.error("CodigoCaixa e Local são obrigatórios.")
         else:
-            api.table(BASE_ID, "Caixas").create(
+            api.table(BASE_ID, _table_ref("CAIXAS")).create(
                 {
                     "CodigoCaixa": codigo.strip(),
                     "Descricao": descricao.strip(),
@@ -389,7 +473,7 @@ with aba_caixas:
             st.success("Caixa criada.")
             st.rerun()
 
-    df_caixas = _table_df("Caixas")
+    df_caixas = _table_df(_table_ref("CAIXAS"))
     if not df_caixas.empty:
         cols = [c for c in ["CodigoCaixa", "Descricao", "Local", "Estado"] if c in df_caixas.columns]
         st.dataframe(df_caixas[cols], use_container_width=True, hide_index=True)

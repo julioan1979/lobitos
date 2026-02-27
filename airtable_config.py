@@ -195,6 +195,22 @@ def get_tombola_credentials() -> Tuple[str, str]:
 
     return token, base_id
 
+
+def get_tombola_table_ref(table_key: str, default_name: str) -> str:
+    """Resolve referência de tabela da Tômbola via extras do contexto.
+
+    Permite configurar tabelas por nome ou `tbl...` sem quebrar compatibilidade:
+    - TOMBOLA_TABLE_<TABLE_KEY>
+    - fallback para `default_name`.
+    """
+    ctx = current_context()
+    if ctx is None:
+        return default_name
+
+    extra_key = f"TOMBOLA_TABLE_{(table_key or '').strip().upper()}"
+    configured = (ctx.extra(extra_key) or "").strip()
+    return configured or default_name
+
 def context_labels() -> Optional[str]:
     ctx = current_context()
     if ctx is None:
