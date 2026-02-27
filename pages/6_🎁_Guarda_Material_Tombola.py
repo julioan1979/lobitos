@@ -888,6 +888,100 @@ with aba_patrocinios:
             hide_index=True,
         )
 
+    st.subheader("Registar patrocínio pendente")
+    df_caixas = _table_df(_table_ref("CAIXAS"))
+    df_eventos = _table_df(_table_ref("EVENTOS"))
+
+    patrocinadores_opcoes = [("", "")]
+    if not df_patrocinadores.empty and {"id", "Nome"}.issubset(df_patrocinadores.columns):
+        patrocinadores_opcoes.extend(
+            [(str(row["id"]), str(row["Nome"]).strip()) for _, row in df_patrocinadores.iterrows() if str(row["Nome"]).strip()]
+        )
+
+    caixas_opcoes = [("", "")]
+    if not df_caixas.empty and "id" in df_caixas.columns:
+        caixas_opcoes.extend(
+            [
+                (str(row["id"]), str(row.get("CodigoCaixa") or row.get("Descricao") or row["id"]))
+                for _, row in df_caixas.iterrows()
+            ]
+        )
+
+    eventos_opcoes = [("", "")]
+    if not df_eventos.empty and "id" in df_eventos.columns:
+        eventos_opcoes.extend(
+            [(str(row["id"]), str(row.get("NomeEvento") or row["id"])) for _, row in df_eventos.iterrows()]
+        )
+
+    with st.form("form_add_registo_patrocinio_tombola"):
+        if len(patrocinadores_opcoes) > 1:
+            patrocinador_idx = st.selectbox(
+                "Patrocinador",
+                options=list(range(len(patrocinadores_opcoes))),
+                format_func=lambda idx: patrocinadores_opcoes[idx][1] or "Selecione...",
+            )
+            patrocinador_nome = patrocinadores_opcoes[patrocinador_idx][1]
+        else:
+            st.info("Sem patrocinadores cadastrados. Crie primeiro em 'Adicionar patrocinador'.")
+            patrocinador_nome = ""
+
+        descricao_item = st.text_input("Descrição do item")
+        quantidade_patrocinio = st.number_input("Quantidade", min_value=1, step=1, value=1)
+        categoria_patrocinio = st.text_input("Categoria (opcional)")
+        observacoes_patrocinio = st.text_area("Observações (opcional)")
+
+        col_pat_1, col_pat_2 = st.columns(2)
+        with col_pat_1:
+            caixa_idx = st.selectbox(
+                "Caixa sugerida (opcional)",
+                options=list(range(len(caixas_opcoes))),
+                format_func=lambda idx: caixas_opcoes[idx][1] or "Sem caixa",
+            )
+        with col_pat_2:
+            evento_idx = st.selectbox(
+                "Evento (opcional)",
+                options=list(range(len(eventos_opcoes))),
+                format_func=lambda idx: eventos_opcoes[idx][1] or "Sem evento",
+            )
+
+        submeter_registo_patrocinio = st.form_submit_button("Adicionar registo pendente")
+
+    if submeter_registo_patrocinio:
+        descricao_item = (descricao_item or "").strip()
+        if not patrocinador_nome:
+            st.error("Selecione um patrocinador para criar o registo pendente.")
+        elif not descricao_item:
+            st.error("Descrição do item é obrigatória.")
+        else:
+            payload_registo = {
+                "PatrocinadorNome": patrocinador_nome,
+                "DescricaoItem": descricao_item,
+                "Quantidade": int(quantidade_patrocinio),
+                "Estado": "Pendente",
+                "Processado": False,
+            }
+
+            categoria_patrocinio = (categoria_patrocinio or "").strip()
+            observacoes_patrocinio = (observacoes_patrocinio or "").strip()
+            if categoria_patrocinio:
+                payload_registo["Categoria"] = categoria_patrocinio
+            if observacoes_patrocinio:
+                payload_registo["Observacoes"] = observacoes_patrocinio
+
+            caixa_sugerida_id = caixas_opcoes[caixa_idx][0]
+            evento_id = eventos_opcoes[evento_idx][0]
+            if caixa_sugerida_id:
+                payload_registo["CaixaSugerida"] = [caixa_sugerida_id]
+            if evento_id:
+                payload_registo["Evento"] = [evento_id]
+
+            try:
+                api.table(BASE_ID, _table_ref("REGISTO_PATROCINIOS")).create(payload_registo)
+                st.success("Registo pendente criado com sucesso. Já pode processar na lista abaixo.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Erro ao criar registo pendente: {exc}")
+
     df_pat = _table_df(_table_ref("REGISTO_PATROCINIOS"))
     relatorio_batch = st.session_state.pop("patrocinios_batch_relatorio", None)
     if relatorio_batch:
