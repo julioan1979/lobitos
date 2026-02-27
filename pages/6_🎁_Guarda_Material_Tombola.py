@@ -36,7 +36,7 @@ try:
     AIRTABLE_TOKEN, BASE_ID = get_tombola_credentials()
 except RuntimeError as exc:
     st.error(str(exc))
-    st.info("Defina TOMBOLA_AIRTABLE_BASE_ID (e opcionalmente TOMBOLA_AIRTABLE_TOKEN) nos secrets da secção.")
+    st.info("Defina TOMBOLA_AIRTABLE_BASE_ID e TOMBOLA_AIRTABLE_TOKEN nos secrets da secção.")
     st.stop()
 
 api = Api(AIRTABLE_TOKEN)
