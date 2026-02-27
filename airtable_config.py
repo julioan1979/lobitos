@@ -173,17 +173,27 @@ def get_tombola_credentials() -> Tuple[str, str]:
     """Obtém credenciais da base transversal da Tômbola para o contexto atual."""
     ctx = current_context()
     if ctx is None:
-        raise RuntimeError("Nenhuma secção Airtable selecionada.")
+        st.error("Nenhuma secção selecionada. Volte ao ecrã de login.")
+        st.stop()
 
-    token = ctx.extra("TOMBOLA_AIRTABLE_TOKEN") or ctx.token
-    base_id = ctx.extra("TOMBOLA_AIRTABLE_BASE_ID")
+    token = (ctx.extra("TOMBOLA_AIRTABLE_TOKEN") or "").strip()
+    base_id = (ctx.extra("TOMBOLA_AIRTABLE_BASE_ID") or "").strip()
 
+    missing = []
+    if not token:
+        missing.append("TOMBOLA_AIRTABLE_TOKEN")
     if not base_id:
-        raise RuntimeError(
-            "A configuração 'TOMBOLA_AIRTABLE_BASE_ID' não foi definida para a secção atual."
-        )
+        missing.append("TOMBOLA_AIRTABLE_BASE_ID")
 
-    return str(token).strip(), str(base_id).strip()
+    if missing:
+        missing_labels = ", ".join(missing)
+        st.error(
+            f"As configurações {missing_labels} não foram definidas para a secção "
+            f"{ctx.agrupamento_label} · {ctx.secao_label}. Atualize os secrets no Streamlit."
+        )
+        st.stop()
+
+    return token, base_id
 
 def context_labels() -> Optional[str]:
     ctx = current_context()
