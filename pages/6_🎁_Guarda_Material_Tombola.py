@@ -8,8 +8,10 @@ from airtable_config import context_labels, get_tombola_credentials
 from menu import menu_with_redirect
 from tombola_utils import (
     ajustar_stock_item,
+    criar_movimento,
     encontrar_item_por_nome,
     normalizar_nome_item,
+    registrar_entrada,
     transferir_item_caixa,
 )
 
@@ -22,6 +24,10 @@ if secao_info:
     st.caption(secao_info)
 
 role = st.session_state.get("role")
+if role == "pais":
+    st.error("Esta área não está disponível para perfis de Pais.")
+    st.stop()
+
 if role not in {"admin", "tesoureiro"}:
     st.error("Esta área está disponível apenas para Admin e Tesoureiro.")
     st.stop()
@@ -73,14 +79,18 @@ def _ensure_patrocinador_id(nome: str) -> str | None:
     return novo.get("id")
 
 
-def _processar_patrocinio(registo: dict, inventario_registos: list[dict]) -> None:
+def _processar_patrocinio(registo: dict) -> None:
     campos = registo.get("fields", {})
+    if campos.get("Processado"):
+        raise ValueError("Este patrocínio já foi processado.")
+
     descricao = str(campos.get("DescricaoItem") or "").strip()
     quantidade = _safe_int(campos.get("Quantidade"))
     if not descricao or quantidade <= 0:
         raise ValueError("Registo inválido: DescricaoItem e Quantidade > 0 são obrigatórios.")
 
     tabela_inventario = api.table(BASE_ID, "Inventario")
+    inventario_registos = tabela_inventario.all()
     item_existente = encontrar_item_por_nome(inventario_registos, descricao)
 
     caixa_sugerida = campos.get("CaixaSugerida")
@@ -92,8 +102,18 @@ def _processar_patrocinio(registo: dict, inventario_registos: list[dict]) -> Non
 
     if item_existente:
         item_id = item_existente["id"]
-        atual = float(item_existente.get("fields", {}).get("QuantidadeAtual") or 0)
-        tabela_inventario.update(item_id, {"QuantidadeAtual": atual + quantidade})
+        registrar_entrada(
+            api,
+            BASE_ID,
+            item_id=item_id,
+            quantidade=quantidade,
+            executado_por=executado_por,
+            evento_id=evento_id,
+            caixa_destino_id=caixa_sugerida_id,
+            patrocinador_id=patrocinador_id,
+            origem_entrada="Patrocínio",
+            notas=str(campos.get("Observacoes") or "").strip(),
+        )
     else:
         campos_novo = {
             "NomeItem": descricao,
@@ -107,26 +127,26 @@ def _processar_patrocinio(registo: dict, inventario_registos: list[dict]) -> Non
             campos_novo["CaixaAtual"] = [caixa_sugerida_id]
         novo = tabela_inventario.create(campos_novo)
         item_id = novo["id"]
-
-    api.table(BASE_ID, "Movimentos").create(
-        {
-            "Tipo": "Entrada",
-            "Item": [item_id],
-            "Quantidade": quantidade,
-            "OrigemEntrada": "Patrocínio",
-            "ExecutadoPor": executado_por,
-            "Notas": str(campos.get("Observacoes") or "").strip(),
-            **({"Evento": [evento_id]} if evento_id else {}),
-            **({"Patrocinador": [patrocinador_id]} if patrocinador_id else {}),
-        }
-    )
+        criar_movimento(
+            api,
+            BASE_ID,
+            tipo="Entrada",
+            item_id=item_id,
+            quantidade=quantidade,
+            executado_por=executado_por,
+            evento_id=evento_id,
+            caixa_destino_id=caixa_sugerida_id,
+            origem_entrada="Patrocínio",
+            patrocinador_id=patrocinador_id,
+            notas=str(campos.get("Observacoes") or "").strip(),
+        )
 
     api.table(BASE_ID, "RegistoPatrocinios").update(registo["id"], {"Processado": True, "Estado": "Recebido"})
 
 
 st.title("🎁 Guarda Material - Tômbola")
 aba_dashboard, aba_inventario, aba_patrocinios, aba_eventos, aba_caixas = st.tabs(
-    ["📊 Dashboard", "📦 Inventário", "🤝 Patrocínios", "🎪 Eventos", "🗃️ Caixas"]
+    ["Dashboard", "Inventário", "Patrocínios", "Eventos", "Caixas"]
 )
 
 with aba_dashboard:
@@ -188,14 +208,14 @@ with aba_inventario:
             if caixa_id:
                 campos["CaixaAtual"] = [caixa_id]
             novo = api.table(BASE_ID, "Inventario").create(campos)
-            api.table(BASE_ID, "Movimentos").create(
-                {
-                    "Tipo": "Ajuste",
-                    "Item": [novo["id"]],
-                    "Quantidade": int(quantidade),
-                    "ExecutadoPor": executado_por,
-                    "Notas": "Inventário inicial",
-                }
+            criar_movimento(
+                api,
+                BASE_ID,
+                tipo="Ajuste",
+                item_id=novo["id"],
+                quantidade=int(quantidade),
+                executado_por=executado_por,
+                notas="Inventário inicial",
             )
             st.success("Item criado e movimento de ajuste inicial registado.")
             st.rerun()
@@ -271,15 +291,17 @@ with aba_patrocinios:
             st.write("Patrocínios pendentes")
             mostrar_cols = [c for c in ["PatrocinadorNome", "DescricaoItem", "Quantidade", "Estado", "Processado"] if c in pendentes.columns]
             st.dataframe(pendentes[mostrar_cols], use_container_width=True, hide_index=True)
-            registos_inv = api.table(BASE_ID, "Inventario").all()
             for _, row in pendentes.iterrows():
                 reg_id = row["id"]
                 label = f"Processar {row.get('DescricaoItem', reg_id)}"
                 if st.button(label, key=f"proc_pat_{reg_id}"):
                     try:
                         registo = api.table(BASE_ID, "RegistoPatrocinios").get(reg_id)
-                        _processar_patrocinio(registo, registos_inv)
-                        st.success("Patrocínio processado com sucesso.")
+                        if registo.get("fields", {}).get("Processado"):
+                            st.warning("Este patrocínio já tinha sido processado.")
+                        else:
+                            _processar_patrocinio(registo)
+                            st.success("Patrocínio processado com sucesso.")
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Erro ao processar patrocínio: {exc}")

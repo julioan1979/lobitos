@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from typing import Any, Dict, Iterable, Optional
 
 from pyairtable import Api
@@ -15,10 +16,16 @@ def _validar_notas_acao_critica(tipo: str, notas: str) -> None:
 
 
 def _to_int_positivo(valor: Any) -> int:
+    if isinstance(valor, bool):
+        raise ValueError("Quantidade inválida. Use um número inteiro.")
+    if isinstance(valor, float) and not valor.is_integer():
+        raise ValueError("Quantidade inválida. Use um número inteiro.")
     try:
         quantidade = int(valor)
     except (TypeError, ValueError) as exc:
         raise ValueError("Quantidade inválida. Use um número inteiro.") from exc
+    if str(valor).strip() != str(quantidade) and not (isinstance(valor, float) and valor.is_integer()):
+        raise ValueError("Quantidade inválida. Use um número inteiro.")
     if quantidade <= 0:
         raise ValueError("A quantidade tem de ser maior que zero.")
     return quantidade
@@ -86,6 +93,198 @@ def criar_movimento(
     return api.table(base_id, "Movimentos").create(campos)
 
 
+def _atualizar_inventario_e_movimento(
+    api: Api,
+    base_id: str,
+    *,
+    item_id: str,
+    quantidade_atual_anterior: float,
+    quantidade_nova: float,
+    dados_movimento: Dict[str, Any],
+    caixa_anterior: Optional[str] = None,
+    caixa_nova: Optional[str] = None,
+) -> Dict[str, Any]:
+    tabela_inv = api.table(base_id, "Inventario")
+    payload_update: Dict[str, Any] = {"QuantidadeAtual": quantidade_nova}
+    if caixa_nova:
+        payload_update["CaixaAtual"] = [caixa_nova]
+
+    tabela_inv.update(item_id, payload_update)
+    try:
+        return criar_movimento(api, base_id, item_id=item_id, **dados_movimento)
+    except Exception as exc:
+        rollback_payload: Dict[str, Any] = {"QuantidadeAtual": quantidade_atual_anterior}
+        if caixa_nova:
+            rollback_payload["CaixaAtual"] = [caixa_anterior] if caixa_anterior else []
+        try:
+            tabela_inv.update(item_id, rollback_payload)
+        except Exception as rollback_exc:
+            raise RuntimeError(
+                "Falha ao criar movimento e não foi possível repor o inventário automaticamente."
+            ) from rollback_exc
+        raise RuntimeError("Falha ao criar movimento; atualização de inventário revertida.") from exc
+
+
+def registrar_entrada(
+    api: Api,
+    base_id: str,
+    *,
+    item_id: str,
+    quantidade: int,
+    executado_por: str,
+    evento_id: Optional[str] = None,
+    caixa_origem_id: Optional[str] = None,
+    caixa_destino_id: Optional[str] = None,
+    patrocinador_id: Optional[str] = None,
+    origem_entrada: Optional[str] = None,
+    notas: str = "",
+) -> Dict[str, Any]:
+    quantidade = _to_int_positivo(quantidade)
+    tabela_inv = api.table(base_id, "Inventario")
+    item = tabela_inv.get(item_id)
+    atual = _to_float(item.get("fields", {}).get("QuantidadeAtual"))
+    novo_valor = atual + quantidade
+    return _atualizar_inventario_e_movimento(
+        api,
+        base_id,
+        item_id=item_id,
+        quantidade_atual_anterior=atual,
+        quantidade_nova=novo_valor,
+        dados_movimento={
+            "tipo": "Entrada",
+            "quantidade": quantidade,
+            "executado_por": executado_por,
+            "caixa_origem_id": caixa_origem_id,
+            "caixa_destino_id": caixa_destino_id,
+            "evento_id": evento_id,
+            "origem_entrada": origem_entrada,
+            "patrocinador_id": patrocinador_id,
+            "notas": notas,
+        },
+    )
+
+
+def registrar_saida(
+    api: Api,
+    base_id: str,
+    *,
+    item_id: str,
+    quantidade: int,
+    executado_por: str,
+    evento_id: Optional[str] = None,
+    caixa_origem_id: Optional[str] = None,
+    caixa_destino_id: Optional[str] = None,
+    patrocinador_id: Optional[str] = None,
+    notas: str = "",
+) -> Dict[str, Any]:
+    quantidade = _to_int_positivo(quantidade)
+    tabela_inv = api.table(base_id, "Inventario")
+    item = tabela_inv.get(item_id)
+    atual = _to_float(item.get("fields", {}).get("QuantidadeAtual"))
+    novo_valor = atual - quantidade
+    if novo_valor < 0:
+        raise ValueError("Operação inválida: stock não pode ficar negativo.")
+    return _atualizar_inventario_e_movimento(
+        api,
+        base_id,
+        item_id=item_id,
+        quantidade_atual_anterior=atual,
+        quantidade_nova=novo_valor,
+        dados_movimento={
+            "tipo": "Saída",
+            "quantidade": quantidade,
+            "executado_por": executado_por,
+            "caixa_origem_id": caixa_origem_id,
+            "caixa_destino_id": caixa_destino_id,
+            "evento_id": evento_id,
+            "patrocinador_id": patrocinador_id,
+            "notas": notas,
+        },
+    )
+
+
+def registrar_ajuste(
+    api: Api,
+    base_id: str,
+    *,
+    item_id: str,
+    quantidade: int,
+    executado_por: str,
+    reduzir: bool = False,
+    evento_id: Optional[str] = None,
+    caixa_origem_id: Optional[str] = None,
+    caixa_destino_id: Optional[str] = None,
+    patrocinador_id: Optional[str] = None,
+    notas: str = "",
+) -> Dict[str, Any]:
+    quantidade = _to_int_positivo(quantidade)
+    tabela_inv = api.table(base_id, "Inventario")
+    item = tabela_inv.get(item_id)
+    atual = _to_float(item.get("fields", {}).get("QuantidadeAtual"))
+    novo_valor = atual - quantidade if reduzir else atual + quantidade
+    if novo_valor < 0:
+        raise ValueError("Operação inválida: stock não pode ficar negativo.")
+    return _atualizar_inventario_e_movimento(
+        api,
+        base_id,
+        item_id=item_id,
+        quantidade_atual_anterior=atual,
+        quantidade_nova=novo_valor,
+        dados_movimento={
+            "tipo": "Ajuste",
+            "quantidade": quantidade,
+            "executado_por": executado_por,
+            "caixa_origem_id": caixa_origem_id,
+            "caixa_destino_id": caixa_destino_id,
+            "evento_id": evento_id,
+            "patrocinador_id": patrocinador_id,
+            "notas": notas,
+        },
+    )
+
+
+def registrar_transferencia(
+    api: Api,
+    base_id: str,
+    *,
+    item_id: str,
+    quantidade: int,
+    caixa_destino_id: str,
+    executado_por: str,
+    evento_id: Optional[str] = None,
+    patrocinador_id: Optional[str] = None,
+    notas: str = "",
+) -> Dict[str, Any]:
+    quantidade = _to_int_positivo(quantidade)
+    tabela_inv = api.table(base_id, "Inventario")
+    item = tabela_inv.get(item_id)
+    campos_item = item.get("fields", {})
+    atual = _to_float(campos_item.get("QuantidadeAtual"))
+    if quantidade > atual:
+        raise ValueError("Operação inválida: quantidade transferida excede stock disponível.")
+    caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
+
+    return _atualizar_inventario_e_movimento(
+        api,
+        base_id,
+        item_id=item_id,
+        quantidade_atual_anterior=atual,
+        quantidade_nova=atual,
+        caixa_anterior=caixa_origem_id,
+        caixa_nova=caixa_destino_id,
+        dados_movimento={
+            "tipo": "Transferência",
+            "quantidade": quantidade,
+            "executado_por": executado_por,
+            "caixa_origem_id": caixa_origem_id,
+            "caixa_destino_id": caixa_destino_id,
+            "evento_id": evento_id,
+            "patrocinador_id": patrocinador_id,
+            "notas": notas,
+        },
+    )
+
+
 def ajustar_stock_item(
     api: Api,
     base_id: str,
@@ -109,26 +308,49 @@ def ajustar_stock_item(
     tabela_inv = api.table(base_id, "Inventario")
     item = tabela_inv.get(item_id)
     campos_item = item.get("fields", {})
-    atual = _to_float(campos_item.get("QuantidadeAtual"))
-    novo_valor = atual + float(delta)
-
-    if novo_valor < 0:
-        raise ValueError("Operação inválida: stock não pode ficar negativo.")
-
-    tabela_inv.update(item_id, {"QuantidadeAtual": novo_valor})
-
     caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
+    quantidade = abs(int(delta))
 
-    return criar_movimento(
+    if tipo_movimento == "Entrada":
+        if delta < 0:
+            raise ValueError("Entrada deve usar um delta positivo.")
+        return registrar_entrada(
+            api,
+            base_id,
+            item_id=item_id,
+            quantidade=quantidade,
+            executado_por=executado_por,
+            evento_id=evento_id,
+            caixa_origem_id=caixa_origem_id,
+            origem_entrada=origem_entrada,
+            patrocinador_id=patrocinador_id,
+            notas=notas,
+        )
+
+    if tipo_movimento == "Saída":
+        if delta > 0:
+            raise ValueError("Saída deve usar um delta negativo.")
+        return registrar_saida(
+            api,
+            base_id,
+            item_id=item_id,
+            quantidade=quantidade,
+            executado_por=executado_por,
+            evento_id=evento_id,
+            caixa_origem_id=caixa_origem_id,
+            patrocinador_id=patrocinador_id,
+            notas=notas,
+        )
+
+    return registrar_ajuste(
         api,
         base_id,
-        tipo=tipo_movimento,
         item_id=item_id,
-        quantidade=abs(int(delta)),
+        quantidade=quantidade,
         executado_por=executado_por,
-        caixa_origem_id=caixa_origem_id,
+        reduzir=delta < 0,
         evento_id=evento_id,
-        origem_entrada=origem_entrada,
+        caixa_origem_id=caixa_origem_id,
         patrocinador_id=patrocinador_id,
         notas=notas,
     )
@@ -157,12 +379,10 @@ def transferir_item_caixa(
     return criar_movimento(
         api,
         base_id,
-        tipo="Transferência",
         item_id=item_id,
+        caixa_destino_id=caixa_destino_id,
         quantidade=quantidade,
         executado_por=executado_por,
-        caixa_origem_id=caixa_origem_id,
-        caixa_destino_id=caixa_destino_id,
         notas=notas,
     )
 
@@ -170,7 +390,9 @@ def transferir_item_caixa(
 def normalizar_nome_item(valor: Any) -> str:
     if valor is None:
         return ""
-    return " ".join(str(valor).strip().lower().split())
+    texto = " ".join(str(valor).strip().lower().split())
+    texto_sem_acentos = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+    return texto_sem_acentos
 
 
 def encontrar_item_por_nome(registos_inventario: Iterable[Dict[str, Any]], nome_item: str) -> Optional[Dict[str, Any]]:
