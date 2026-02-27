@@ -5,6 +5,33 @@ from typing import Any, Dict, List
 from pyairtable import Api
 
 
+def _field_requires_options(field_type: str) -> bool:
+    return field_type in {"checkbox", "date"}
+
+
+def _normalize_fields_for_table_create(fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Compatibiliza payload de criação de tabela com requisitos do Airtable Meta API.
+
+    - Garante `options` em tipos que exigem bloco de opções (ex.: checkbox/date).
+    - Garante campo primário válido (texto) quando a definição atual começa por tipo não suportado.
+    """
+    normalized: List[Dict[str, Any]] = []
+    for field in fields:
+        field_copy = dict(field)
+        if _field_requires_options(field_copy["type"]) and "options" not in field_copy:
+            field_copy["options"] = {}
+        normalized.append(field_copy)
+
+    if not normalized:
+        return normalized
+
+    primary_type = normalized[0].get("type")
+    if primary_type not in {"singleLineText", "multilineText", "number", "autoNumber", "formula"}:
+        normalized.insert(0, {"name": "Registo", "type": "singleLineText"})
+
+    return normalized
+
+
 def _table_exists(base, table_ref: str) -> bool:
     refs = {tbl.id: tbl for tbl in base.tables()}
     names = {tbl.name: tbl for tbl in base.tables()}
@@ -28,6 +55,8 @@ def _field_exists(table, field_name: str) -> bool:
 def _ensure_field(table, name: str, field_type: str, options: Dict[str, Any] | None = None) -> bool:
     if _field_exists(table, name):
         return False
+    if options is None and _field_requires_options(field_type):
+        options = {}
     table.create_field(name, field_type, options=options)
     return True
 
@@ -140,7 +169,7 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
                 errors.append(f"{key}: não é possível criar tabela quando referência é ID ({table_ref}).")
                 continue
             try:
-                base.create_table(table_ref, fields)
+                base.create_table(table_ref, _normalize_fields_for_table_create(fields))
                 created_tables.append(table_ref)
             except Exception as exc:
                 errors.append(f"{key}: falha ao criar tabela '{table_ref}': {exc}")
