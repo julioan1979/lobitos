@@ -374,18 +374,27 @@ def transferir_item_caixa(
     caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
 
     tabela_inv.update(item_id, {"CaixaAtual": [caixa_destino_id]})
-
-    return criar_movimento(
-        api,
-        base_id,
-        tipo="Transferência",
-        item_id=item_id,
-        caixa_origem_id=caixa_origem_id,
-        caixa_destino_id=caixa_destino_id,
-        quantidade=quantidade,
-        executado_por=executado_por,
-        notas=notas,
-    )
+    try:
+        return criar_movimento(
+            api,
+            base_id,
+            tipo="Transferência",
+            item_id=item_id,
+            caixa_origem_id=caixa_origem_id,
+            caixa_destino_id=caixa_destino_id,
+            quantidade=quantidade,
+            executado_por=executado_por,
+            notas=notas,
+        )
+    except Exception as exc:
+        rollback_payload: Dict[str, Any] = {"CaixaAtual": [caixa_origem_id] if caixa_origem_id else []}
+        try:
+            tabela_inv.update(item_id, rollback_payload)
+        except Exception as rollback_exc:
+            raise RuntimeError(
+                "Falha ao criar movimento e não foi possível repor a caixa do inventário automaticamente."
+            ) from rollback_exc
+        raise RuntimeError("Falha ao criar movimento; atualização de caixa revertida.") from exc
 
 
 def normalizar_nome_item(valor: Any) -> str:
