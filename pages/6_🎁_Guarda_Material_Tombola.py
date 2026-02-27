@@ -826,7 +826,7 @@ with aba_patrocinios:
             evento_options.append(evento_id)
             evento_label[evento_id] = evento_nome
 
-    with st.form("form_add_registo_patrocinio_tombola"):
+    with st.form("form_add_registo_patrocinio_direto_tombola"):
         patrocinador_id_form = st.selectbox(
             "Patrocinador",
             options=[None] + patrocinador_options,
@@ -1004,7 +1004,7 @@ with aba_patrocinios:
             [(str(row["id"]), str(row.get("NomeEvento") or row["id"])) for _, row in df_eventos.iterrows()]
         )
 
-    with st.form("form_add_registo_patrocinio_tombola"):
+    with st.form("form_registar_patrocinio_pendente_tombola"):
         if len(patrocinadores_opcoes) > 1:
             patrocinador_idx = st.selectbox(
                 "Patrocinador",
