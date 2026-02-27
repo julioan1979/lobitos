@@ -25,11 +25,53 @@ def _field_exists(table, field_name: str) -> bool:
     return any(field.name == field_name for field in schema.fields)
 
 
+def _normalize_field_options(field_type: str, options: Dict[str, Any] | None) -> Dict[str, Any] | None:
+    """Normaliza opções para tipos que exigem payload explícito na Meta API."""
+    if options is not None:
+        return options
+
+    if field_type == "checkbox":
+        # A Meta API exige icon/color explícitos para criação de checkbox.
+        return {"icon": "check", "color": "greenBright"}
+
+    if field_type == "date":
+        # A Meta API exige dateFormat explícito para criação de campos date.
+        return {"dateFormat": {"name": "local", "format": "l"}}
+
+    return None
+
+
+def _create_field_with_explicit_payload(table, name: str, field_type: str, options: Dict[str, Any] | None = None) -> None:
+    """Cria campo garantindo envio explícito de `options` quando necessário.
+
+    O `pyairtable.Table.create_field` omite a chave `options` quando recebe
+    um dict vazio (`{}`), porque faz `if options:`. Para tipos como `checkbox`
+    e `date`, a Meta API exige a presença explícita de `options`, mesmo vazio.
+    """
+    request: Dict[str, Any] = {"name": name, "type": field_type}
+    if options is not None:
+        request["options"] = options
+    table.api.post(table.urls.fields, json=request)
+
+
 def _ensure_field(table, name: str, field_type: str, options: Dict[str, Any] | None = None) -> bool:
     if _field_exists(table, name):
         return False
-    table.create_field(name, field_type, options=options)
+    _create_field_with_explicit_payload(table, name, field_type, options=_normalize_field_options(field_type, options))
     return True
+
+
+def _primary_field_for_create(fields: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Escolhe um campo primário compatível para criação da tabela.
+
+    A API de criação de tabelas é mais restritiva para o campo primário
+    (ex.: não aceita `singleSelect` como primário), por isso usamos um
+    `singleLineText` já previsto no schema quando possível.
+    """
+    for field in fields:
+        if field.get("type") == "singleLineText":
+            return {"name": field["name"], "type": "singleLineText"}
+    return {"name": "Nome", "type": "singleLineText"}
 
 
 
@@ -108,6 +150,7 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
             {"name": "Observacoes", "type": "multilineText"},
         ],
         "MOVIMENTOS": [
+            {"name": "ExecutadoPor", "type": "singleLineText"},
             {
                 "name": "Tipo",
                 "type": "singleSelect",
@@ -121,7 +164,6 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
                 },
             },
             {"name": "Quantidade", "type": "number", "options": {"precision": 0}},
-            {"name": "ExecutadoPor", "type": "singleLineText"},
             {"name": "OrigemEntrada", "type": "singleLineText"},
             {"name": "Notas", "type": "multilineText"},
         ],
@@ -140,7 +182,7 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
                 errors.append(f"{key}: não é possível criar tabela quando referência é ID ({table_ref}).")
                 continue
             try:
-                base.create_table(table_ref, fields)
+                base.create_table(table_ref, [_primary_field_for_create(fields)])
                 created_tables.append(table_ref)
             except Exception as exc:
                 errors.append(f"{key}: falha ao criar tabela '{table_ref}': {exc}")
