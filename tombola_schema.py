@@ -32,6 +32,19 @@ def _ensure_field(table, name: str, field_type: str, options: Dict[str, Any] | N
     return True
 
 
+def _primary_field_for_create(fields: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Escolhe um campo primário compatível para criação da tabela.
+
+    A API de criação de tabelas é mais restritiva para o campo primário
+    (ex.: não aceita `singleSelect` como primário), por isso usamos um
+    `singleLineText` já previsto no schema quando possível.
+    """
+    for field in fields:
+        if field.get("type") == "singleLineText":
+            return {"name": field["name"], "type": "singleLineText"}
+    return {"name": "Nome", "type": "singleLineText"}
+
+
 
 
 def _ensure_base_fields(table, fields: List[Dict[str, Any]], table_ref: str, created_fields: List[str], errors: List[str]) -> None:
@@ -108,6 +121,7 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
             {"name": "Observacoes", "type": "multilineText"},
         ],
         "MOVIMENTOS": [
+            {"name": "ExecutadoPor", "type": "singleLineText"},
             {
                 "name": "Tipo",
                 "type": "singleSelect",
@@ -121,7 +135,6 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
                 },
             },
             {"name": "Quantidade", "type": "number", "options": {"precision": 0}},
-            {"name": "ExecutadoPor", "type": "singleLineText"},
             {"name": "OrigemEntrada", "type": "singleLineText"},
             {"name": "Notas", "type": "multilineText"},
         ],
@@ -140,7 +153,7 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
                 errors.append(f"{key}: não é possível criar tabela quando referência é ID ({table_ref}).")
                 continue
             try:
-                base.create_table(table_ref, fields)
+                base.create_table(table_ref, [_primary_field_for_create(fields)])
                 created_tables.append(table_ref)
             except Exception as exc:
                 errors.append(f"{key}: falha ao criar tabela '{table_ref}': {exc}")
