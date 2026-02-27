@@ -8,8 +8,10 @@ from airtable_config import context_labels, get_tombola_credentials
 from menu import menu_with_redirect
 from tombola_utils import (
     ajustar_stock_item,
+    criar_movimento,
     encontrar_item_por_nome,
     normalizar_nome_item,
+    registrar_entrada,
     transferir_item_caixa,
 )
 
@@ -88,8 +90,18 @@ def _processar_patrocinio(registo: dict, inventario_registos: list[dict]) -> Non
 
     if item_existente:
         item_id = item_existente["id"]
-        atual = float(item_existente.get("fields", {}).get("QuantidadeAtual") or 0)
-        tabela_inventario.update(item_id, {"QuantidadeAtual": atual + quantidade})
+        registrar_entrada(
+            api,
+            BASE_ID,
+            item_id=item_id,
+            quantidade=quantidade,
+            executado_por=executado_por,
+            evento_id=evento_id,
+            caixa_destino_id=caixa_sugerida_id,
+            patrocinador_id=patrocinador_id,
+            origem_entrada="Patrocínio",
+            notas=str(campos.get("Observacoes") or "").strip(),
+        )
     else:
         campos_novo = {
             "NomeItem": descricao,
@@ -103,19 +115,19 @@ def _processar_patrocinio(registo: dict, inventario_registos: list[dict]) -> Non
             campos_novo["CaixaAtual"] = [caixa_sugerida_id]
         novo = tabela_inventario.create(campos_novo)
         item_id = novo["id"]
-
-    api.table(BASE_ID, "Movimentos").create(
-        {
-            "Tipo": "Entrada",
-            "Item": [item_id],
-            "Quantidade": quantidade,
-            "OrigemEntrada": "Patrocínio",
-            "ExecutadoPor": executado_por,
-            "Notas": str(campos.get("Observacoes") or "").strip(),
-            **({"Evento": [evento_id]} if evento_id else {}),
-            **({"Patrocinador": [patrocinador_id]} if patrocinador_id else {}),
-        }
-    )
+        criar_movimento(
+            api,
+            BASE_ID,
+            tipo="Entrada",
+            item_id=item_id,
+            quantidade=quantidade,
+            executado_por=executado_por,
+            evento_id=evento_id,
+            caixa_destino_id=caixa_sugerida_id,
+            origem_entrada="Patrocínio",
+            patrocinador_id=patrocinador_id,
+            notas=str(campos.get("Observacoes") or "").strip(),
+        )
 
     api.table(BASE_ID, "RegistoPatrocinios").update(registo["id"], {"Processado": True, "Estado": "Recebido"})
 
@@ -173,14 +185,14 @@ with aba_inventario:
             if caixa_id:
                 campos["CaixaAtual"] = [caixa_id]
             novo = api.table(BASE_ID, "Inventario").create(campos)
-            api.table(BASE_ID, "Movimentos").create(
-                {
-                    "Tipo": "Ajuste",
-                    "Item": [novo["id"]],
-                    "Quantidade": int(quantidade),
-                    "ExecutadoPor": executado_por,
-                    "Notas": "Inventário inicial",
-                }
+            criar_movimento(
+                api,
+                BASE_ID,
+                tipo="Ajuste",
+                item_id=novo["id"],
+                quantidade=int(quantidade),
+                executado_por=executado_por,
+                notas="Inventário inicial",
             )
             st.success("Item criado e movimento de ajuste inicial registado.")
             st.rerun()
