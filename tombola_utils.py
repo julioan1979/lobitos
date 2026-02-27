@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import unicodedata
 from typing import Any, Dict, Iterable, Optional
 
 from pyairtable import Api
@@ -369,7 +369,9 @@ def transferir_item_caixa(
 def normalizar_nome_item(valor: Any) -> str:
     if valor is None:
         return ""
-    return " ".join(str(valor).strip().lower().split())
+    texto = " ".join(str(valor).strip().lower().split())
+    texto_sem_acentos = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+    return texto_sem_acentos
 
 
 def encontrar_item_por_nome(registos_inventario: Iterable[Dict[str, Any]], nome_item: str) -> Optional[Dict[str, Any]]:

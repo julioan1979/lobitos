@@ -75,14 +75,18 @@ def _ensure_patrocinador_id(nome: str) -> str | None:
     return novo.get("id")
 
 
-def _processar_patrocinio(registo: dict, inventario_registos: list[dict]) -> None:
+def _processar_patrocinio(registo: dict) -> None:
     campos = registo.get("fields", {})
+    if campos.get("Processado"):
+        raise ValueError("Este patrocínio já foi processado.")
+
     descricao = str(campos.get("DescricaoItem") or "").strip()
     quantidade = _safe_int(campos.get("Quantidade"))
     if not descricao or quantidade <= 0:
         raise ValueError("Registo inválido: DescricaoItem e Quantidade > 0 são obrigatórios.")
 
     tabela_inventario = api.table(BASE_ID, "Inventario")
+    inventario_registos = tabela_inventario.all()
     item_existente = encontrar_item_por_nome(inventario_registos, descricao)
 
     caixa_sugerida = campos.get("CaixaSugerida")
@@ -267,15 +271,17 @@ with aba_patrocinios:
             st.write("Patrocínios pendentes")
             mostrar_cols = [c for c in ["PatrocinadorNome", "DescricaoItem", "Quantidade", "Estado", "Processado"] if c in pendentes.columns]
             st.dataframe(pendentes[mostrar_cols], use_container_width=True, hide_index=True)
-            registos_inv = api.table(BASE_ID, "Inventario").all()
             for _, row in pendentes.iterrows():
                 reg_id = row["id"]
                 label = f"Processar {row.get('DescricaoItem', reg_id)}"
                 if st.button(label, key=f"proc_pat_{reg_id}"):
                     try:
                         registo = api.table(BASE_ID, "RegistoPatrocinios").get(reg_id)
-                        _processar_patrocinio(registo, registos_inv)
-                        st.success("Patrocínio processado com sucesso.")
+                        if registo.get("fields", {}).get("Processado"):
+                            st.warning("Este patrocínio já tinha sido processado.")
+                        else:
+                            _processar_patrocinio(registo)
+                            st.success("Patrocínio processado com sucesso.")
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Erro ao processar patrocínio: {exc}")
