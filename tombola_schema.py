@@ -25,10 +25,21 @@ def _field_exists(table, field_name: str) -> bool:
     return any(field.name == field_name for field in schema.fields)
 
 
+def _normalize_field_options(field_type: str, options: Dict[str, Any] | None) -> Dict[str, Any] | None:
+    """Normaliza opções para tipos que exigem payload explícito na Meta API."""
+    if options is not None:
+        return options
+
+    if field_type in {"checkbox", "date"}:
+        return {}
+
+    return None
+
+
 def _ensure_field(table, name: str, field_type: str, options: Dict[str, Any] | None = None) -> bool:
     if _field_exists(table, name):
         return False
-    table.create_field(name, field_type, options=options)
+    table.create_field(name, field_type, options=_normalize_field_options(field_type, options))
     return True
 
 
