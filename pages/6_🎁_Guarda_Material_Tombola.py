@@ -826,7 +826,7 @@ with aba_patrocinios:
             evento_options.append(evento_id)
             evento_label[evento_id] = evento_nome
 
-    with st.form("form_add_registo_patrocinio_tombola"):
+    with st.form("form_add_registo_patrocinio_tombola_v2"):
         patrocinador_id_form = st.selectbox(
             "Patrocinador",
             options=[None] + patrocinador_options,
