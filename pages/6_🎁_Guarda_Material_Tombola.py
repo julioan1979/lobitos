@@ -556,7 +556,7 @@ with aba_inventario:
                     st.error(f"Foram encontrados {total_erros} erro(s). Corrija o ficheiro antes de gravar.")
                 elif not movimentos_lote:
                     st.warning("Nenhuma linha válida para processar.")
-                elif st.button("Processar ficheiro", key="btn_processar_lote_importacao"):
+                elif st.button("Processar lote", key="btn_processar_lote"):
                     relatorio = processar_movimentos_lote(
                         api,
                         BASE_ID,
@@ -586,22 +586,12 @@ with aba_inventario:
         st.subheader("Ajustar stock")
         col_a, col_b, col_c = st.columns([2, 1, 2])
         item_id = col_a.selectbox("Item", options=item_ids, format_func=lambda v: item_label.get(v, v), key="inv_item_ajuste")
-        quantidade_mov = col_b.number_input("Quantidade", min_value=1, value=1, step=1)
+        delta = col_b.number_input("Delta (+/-)", value=1, step=1)
         tipo = col_c.selectbox("Tipo", options=["Entrada", "Saída", "Ajuste"])
-        modo_ajuste = None
-        if tipo == "Ajuste":
-            modo_ajuste = st.radio(
-                "Modo de ajuste",
-                options=["Aumentar stock", "Reduzir stock"],
-                horizontal=True,
-                key="inv_ajuste_modo",
-            )
         notas = st.text_input("Notas do movimento", key="inv_ajuste_notas")
         if st.button("Aplicar ajuste", key="btn_ajustar_stock"):
-            sinal = int(quantidade_mov)
-            if tipo == "Saída":
-                sinal = -sinal
-            elif tipo == "Ajuste" and modo_ajuste == "Reduzir stock":
+            sinal = int(delta)
+            if tipo == "Saída" and sinal > 0:
                 sinal = -sinal
             if tipo in {"Saída", "Ajuste"} and not notas.strip():
                 st.error("Notas são obrigatórias para Saída e Ajuste.")
@@ -655,7 +645,7 @@ with aba_inventario:
             },
         )
 
-        if st.button("Processar lote manual", key="btn_processar_lote_manual"):
+        if st.button("Processar lote", key="btn_processar_lote"):
             processadas = 0
             falhadas = 0
             ignoradas = 0
