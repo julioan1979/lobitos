@@ -70,11 +70,22 @@ def _tabelas_em_falta() -> list[str]:
     return [ref for ref in TABLES.values() if ref not in disponiveis]
 
 
-def _auto_bootstrap_schema() -> None:
-    """Auto-corrige schema da Tômbola em base nova/partial sem ação manual."""
-    chave_execucao = f"tombola_schema_bootstrap_done::{BASE_ID}::{_table_ref('INVENTARIO')}"
+def _is_schema_related_error(exc: Exception) -> bool:
+    mensagem = str(exc).upper()
+    marcadores = [
+        "INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND",
+        "MODEL_NOT_FOUND",
+        "UNKNOWN_TABLE",
+        "TABLE NOT FOUND",
+    ]
+    return any(marcador in mensagem for marcador in marcadores)
+
+
+def _auto_bootstrap_schema(trigger: str) -> bool:
+    """Auto-corrige schema só quando detetado erro de schema/modelo."""
+    chave_execucao = f"tombola_schema_bootstrap_done::{BASE_ID}::{trigger}"
     if st.session_state.get(chave_execucao):
-        return
+        return False
 
     st.session_state[chave_execucao] = True
 
@@ -82,12 +93,12 @@ def _auto_bootstrap_schema() -> None:
         resultado = ensure_tombola_schema(api, BASE_ID, TABLES)
     except Exception as exc:
         st.warning(f"Não foi possível auto-inicializar o schema da Tômbola: {exc}")
-        return
+        return False
 
     total_criados = len(resultado["created_tables"]) + len(resultado["created_fields"])
     if total_criados > 0:
         st.info(
-            "Schema da Tômbola atualizado automaticamente "
+            "Schema da Tômbola atualizado automaticamente após erro de schema "
             f"({len(resultado['created_tables'])} tabelas e {len(resultado['created_fields'])} campos criados)."
         )
 
@@ -102,12 +113,13 @@ def _auto_bootstrap_schema() -> None:
     try:
         faltam = _tabelas_em_falta()
     except Exception:
-        return
+        return True
     if faltam:
         st.warning(
             "A base da Tômbola ainda não tem o schema mínimo completo. "
             f"Tabelas em falta: {', '.join(faltam)}."
         )
+    return True
 
 
 def _table_df(nome_tabela: str) -> pd.DataFrame:
@@ -115,8 +127,16 @@ def _table_df(nome_tabela: str) -> pd.DataFrame:
     try:
         registos = api.table(BASE_ID, nome_tabela).all()
     except Exception as exc:
-        st.warning(f"Não foi possível carregar a tabela '{nome_tabela}': {exc}")
-        return pd.DataFrame()
+        if _is_schema_related_error(exc):
+            _auto_bootstrap_schema(trigger=nome_tabela)
+            try:
+                registos = api.table(BASE_ID, nome_tabela).all()
+            except Exception as retry_exc:
+                st.warning(f"Não foi possível carregar a tabela '{nome_tabela}' após auto-correção de schema: {retry_exc}")
+                return pd.DataFrame()
+        else:
+            st.warning(f"Não foi possível carregar a tabela '{nome_tabela}': {exc}")
+            return pd.DataFrame()
     return pd.DataFrame([{"id": r["id"], **r.get("fields", {})} for r in registos])
 
 
