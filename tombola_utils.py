@@ -9,6 +9,12 @@ from pyairtable import Api
 TIPOS_MOVIMENTO = {"Entrada", "Saída", "Ajuste", "Transferência"}
 
 
+def _validar_notas_acao_critica(tipo: str, notas: str) -> None:
+    """Stock real vive no Inventário; Movimentos é auditoria e ações críticas exigem notas."""
+    if tipo in {"Saída", "Ajuste", "Transferência"} and not (notas or "").strip():
+        raise ValueError("Notas são obrigatórias para Saída, Ajuste e Transferência.")
+
+
 def _to_int_positivo(valor: Any) -> int:
     if isinstance(valor, bool):
         raise ValueError("Quantidade inválida. Use um número inteiro.")
@@ -55,16 +61,20 @@ def criar_movimento(
     patrocinador_id: Optional[str] = None,
     notas: str = "",
 ) -> Dict[str, Any]:
+    """Stock real vive no Inventário; Movimentos é auditoria de operações."""
     if tipo not in TIPOS_MOVIMENTO:
         raise ValueError(f"Tipo de movimento inválido: {tipo}")
+
+    _validar_notas_acao_critica(tipo, notas)
+    if not (executado_por or "").strip():
+        raise ValueError("ExecutadoPor é obrigatório com o email do utilizador autenticado.")
 
     quantidade = _to_int_positivo(quantidade)
     campos: Dict[str, Any] = {
         "Tipo": tipo,
         "Item": [item_id],
         "Quantidade": quantidade,
-        "DataMovimento": datetime.now(timezone.utc).isoformat(),
-        "ExecutadoPor": executado_por or "sistema",
+        "ExecutadoPor": executado_por.strip(),
     }
 
     if caixa_origem_id:
@@ -288,6 +298,7 @@ def ajustar_stock_item(
     origem_entrada: Optional[str] = None,
     patrocinador_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Stock real vive no Inventário; Movimentos é auditoria de ajustes e saídas."""
     if tipo_movimento not in {"Entrada", "Saída", "Ajuste"}:
         raise ValueError("Tipo de movimento inválido para ajuste de stock.")
 
@@ -355,7 +366,17 @@ def transferir_item_caixa(
     executado_por: str,
     notas: str = "",
 ) -> Dict[str, Any]:
-    return registrar_transferencia(
+    """Stock real vive no Inventário; Movimentos é auditoria de transferências."""
+    quantidade = _to_int_positivo(quantidade)
+
+    tabela_inv = api.table(base_id, "Inventario")
+    item = tabela_inv.get(item_id)
+    campos_item = item.get("fields", {})
+    caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
+
+    tabela_inv.update(item_id, {"CaixaAtual": [caixa_destino_id]})
+
+    return criar_movimento(
         api,
         base_id,
         item_id=item_id,

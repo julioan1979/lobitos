@@ -40,10 +40,14 @@ except RuntimeError as exc:
     st.stop()
 
 api = Api(AIRTABLE_TOKEN)
-executado_por = st.session_state.get("user", {}).get("email", "utilizador")
+executado_por = (st.session_state.get("user", {}).get("email") or "").strip()
+if not executado_por:
+    st.error("Não foi possível identificar o utilizador autenticado (email).")
+    st.stop()
 
 
 def _table_df(nome_tabela: str) -> pd.DataFrame:
+    """Stock real vive no Inventário; Movimentos é auditoria e tabelas suportam contexto."""
     try:
         registos = api.table(BASE_ID, nome_tabela).all()
     except Exception as exc:
@@ -160,6 +164,17 @@ with aba_dashboard:
     col3.metric("Itens em baixo stock (<=2)", int(baixo_stock))
 
     if not df_inv.empty:
+        if "CaixaAtual" in df_inv.columns:
+            sem_caixa = int(df_inv["CaixaAtual"].apply(lambda v: not (isinstance(v, list) and len(v) > 0)).sum())
+            if sem_caixa > 0:
+                st.warning(f"Inconsistência: existem {sem_caixa} itens sem caixa atribuída.")
+
+        if "QuantidadeAtual" in df_inv.columns:
+            qtd_numerica = pd.to_numeric(df_inv["QuantidadeAtual"], errors="coerce")
+            invalidas = int((qtd_numerica.isna() | (qtd_numerica < 0)).sum())
+            if invalidas > 0:
+                st.warning(f"Inconsistência: existem {invalidas} itens com quantidade inválida.")
+
         vis = [c for c in ["NomeItem", "Categoria", "QuantidadeAtual", "Estado", "CaixaAtual"] if c in df_inv.columns]
         st.dataframe(df_inv[vis], use_container_width=True, hide_index=True)
     st.caption(f"Caixas registadas: {len(df_caixas.index)}")
@@ -219,20 +234,23 @@ with aba_inventario:
             sinal = int(delta)
             if tipo == "Saída" and sinal > 0:
                 sinal = -sinal
-            try:
-                ajustar_stock_item(
-                    api,
-                    BASE_ID,
-                    item_id=item_id,
-                    delta=sinal,
-                    executado_por=executado_por,
-                    tipo_movimento=tipo,
-                    notas=notas,
-                )
-                st.success("Stock atualizado com sucesso.")
-                st.rerun()
-            except Exception as exc:
-                st.error(str(exc))
+            if tipo in {"Saída", "Ajuste"} and not notas.strip():
+                st.error("Notas são obrigatórias para Saída e Ajuste.")
+            else:
+                try:
+                    ajustar_stock_item(
+                        api,
+                        BASE_ID,
+                        item_id=item_id,
+                        delta=sinal,
+                        executado_por=executado_por,
+                        tipo_movimento=tipo,
+                        notas=notas,
+                    )
+                    st.success("Stock atualizado com sucesso.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
         st.subheader("Transferir item de caixa")
         col_t1, col_t2, col_t3 = st.columns([2, 2, 1])
@@ -243,6 +261,8 @@ with aba_inventario:
         if st.button("Transferir", key="btn_transferir_item"):
             if not caixa_dest:
                 st.error("Crie primeiro uma caixa de destino.")
+            elif not notas_transfer.strip():
+                st.error("Notas são obrigatórias para transferências.")
             else:
                 try:
                     transferir_item_caixa(
@@ -327,21 +347,24 @@ with aba_eventos:
         qtd = col3.number_input("Quantidade", min_value=1, step=1)
         notas = st.text_input("Notas", key="saida_evento_notas")
         if st.button("Registar saída", key="btn_saida_evento"):
-            try:
-                ajustar_stock_item(
-                    api,
-                    BASE_ID,
-                    item_id=item_id,
-                    delta=-int(qtd),
-                    executado_por=executado_por,
-                    tipo_movimento="Saída",
-                    evento_id=evento_id,
-                    notas=notas,
-                )
-                st.success("Saída registada.")
-                st.rerun()
-            except Exception as exc:
-                st.error(str(exc))
+            if not notas.strip():
+                st.error("Notas são obrigatórias para registar saídas.")
+            else:
+                try:
+                    ajustar_stock_item(
+                        api,
+                        BASE_ID,
+                        item_id=item_id,
+                        delta=-int(qtd),
+                        executado_por=executado_por,
+                        tipo_movimento="Saída",
+                        evento_id=evento_id,
+                        notas=notas,
+                    )
+                    st.success("Saída registada.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
 with aba_caixas:
     st.subheader("Criar caixa")
