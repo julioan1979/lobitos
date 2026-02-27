@@ -787,6 +787,97 @@ with aba_patrocinios:
             except Exception as exc:
                 st.error(f"Erro ao adicionar patrocinador: {exc}")
 
+    st.subheader("Adicionar registo de patrocínio")
+    df_patrocinadores_opcoes = _table_df(_table_ref("PATROCINADORES"))
+    patrocinador_options = []
+    patrocinador_label = {}
+    if not df_patrocinadores_opcoes.empty:
+        for _, patrocinador_row in df_patrocinadores_opcoes.iterrows():
+            patrocinador_id = str(patrocinador_row.get("id") or "").strip()
+            if not patrocinador_id:
+                continue
+            patrocinador_nome = str(patrocinador_row.get("Nome") or "").strip() or patrocinador_id
+            patrocinador_options.append(patrocinador_id)
+            patrocinador_label[patrocinador_id] = patrocinador_nome
+
+    df_caixas_opcoes = _table_df(_table_ref("CAIXAS"))
+    caixa_options = []
+    caixa_label = {}
+    if not df_caixas_opcoes.empty:
+        for _, caixa_row in df_caixas_opcoes.iterrows():
+            caixa_id = str(caixa_row.get("id") or "").strip()
+            if not caixa_id:
+                continue
+            caixa_options.append(caixa_id)
+            caixa_label[caixa_id] = _caixa_display_label(caixa_row)
+
+    df_eventos_opcoes = _table_df(_table_ref("EVENTOS"))
+    evento_options = []
+    evento_label = {}
+    if not df_eventos_opcoes.empty:
+        for _, evento_row in df_eventos_opcoes.iterrows():
+            evento_id = str(evento_row.get("id") or "").strip()
+            if not evento_id:
+                continue
+            evento_nome = str(evento_row.get("NomeEvento") or "").strip() or evento_id
+            evento_options.append(evento_id)
+            evento_label[evento_id] = evento_nome
+
+    with st.form("form_add_registo_patrocinio_tombola"):
+        patrocinador_id_form = st.selectbox(
+            "Patrocinador",
+            options=[None] + patrocinador_options,
+            format_func=lambda valor: patrocinador_label.get(valor, "Selecione um patrocinador") if valor else "Selecione um patrocinador",
+        )
+        descricao_item = st.text_input("DescricaoItem")
+        quantidade_item = st.number_input("Quantidade", min_value=1, step=1, value=1)
+        categoria_item = st.text_input("Categoria")
+        caixa_sugerida_id = st.selectbox(
+            "CaixaSugerida",
+            options=[None] + caixa_options,
+            format_func=lambda valor: caixa_label.get(valor, "Sem caixa sugerida") if valor else "Sem caixa sugerida",
+        )
+        evento_id_form = st.selectbox(
+            "Evento",
+            options=[None] + evento_options,
+            format_func=lambda valor: evento_label.get(valor, "Sem evento") if valor else "Sem evento",
+        )
+        observacoes_item = st.text_area("Observacoes")
+        submeter_registo_patrocinio = st.form_submit_button("Adicionar registo")
+
+    if submeter_registo_patrocinio:
+        descricao_item = (descricao_item or "").strip()
+        if not patrocinador_id_form:
+            st.error("Patrocinador é obrigatório.")
+        elif not descricao_item:
+            st.error("DescricaoItem é obrigatório.")
+        elif int(quantidade_item) <= 0:
+            st.error("Quantidade deve ser um inteiro maior que zero.")
+        else:
+            try:
+                campos_registo = {
+                    "Patrocinador": [patrocinador_id_form],
+                    "PatrocinadorNome": patrocinador_label.get(patrocinador_id_form, ""),
+                    "DescricaoItem": descricao_item,
+                    "Quantidade": int(quantidade_item),
+                    "Estado": "Pendente",
+                    "Processado": False,
+                }
+                if (categoria_item or "").strip():
+                    campos_registo["Categoria"] = categoria_item.strip()
+                if caixa_sugerida_id:
+                    campos_registo["CaixaSugerida"] = [caixa_sugerida_id]
+                if evento_id_form:
+                    campos_registo["Evento"] = [evento_id_form]
+                if (observacoes_item or "").strip():
+                    campos_registo["Observacoes"] = observacoes_item.strip()
+
+                api.table(BASE_ID, _table_ref("REGISTO_PATROCINIOS")).create(campos_registo)
+                st.success("Registo de patrocínio criado com sucesso.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Erro ao criar registo de patrocínio: {exc}")
+
     df_patrocinadores = _table_df(_table_ref("PATROCINADORES"))
     if not df_patrocinadores.empty:
         st.caption("Patrocinadores atuais")
