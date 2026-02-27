@@ -30,8 +30,13 @@ def _normalize_field_options(field_type: str, options: Dict[str, Any] | None) ->
     if options is not None:
         return options
 
-    if field_type in {"checkbox", "date"}:
-        return {}
+    if field_type == "checkbox":
+        # A Meta API exige icon/color explícitos para criação de checkbox.
+        return {"icon": "check", "color": "greenBright"}
+
+    if field_type == "date":
+        # A Meta API exige dateFormat explícito para criação de campos date.
+        return {"dateFormat": {"name": "local", "format": "l"}}
 
     return None
 
