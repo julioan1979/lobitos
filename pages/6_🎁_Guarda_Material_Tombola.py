@@ -230,8 +230,34 @@ def _processar_patrocinio(registo: dict) -> None:
 
 st.title("🎁 Guarda Material - Tômbola")
 _auto_bootstrap_schema()
+
+st.markdown("### 🧭 Menu da Tômbola (guia rápido)")
+st.info(
+    "Use as abas da esquerda para a direita: 1) visão geral, 2) gestão de stock, "
+    "3) processamento de patrocínios, 4) saídas para eventos, 5) gestão de caixas."
+)
+
+with st.expander("Como usar este menu (passo a passo)", expanded=True):
+    st.markdown(
+        """
+1. **Dashboard** → confirme métricas gerais e alertas de inconsistência.
+2. **Inventário** → crie itens, ajuste stock (entrada/saída/ajuste) e faça transferências entre caixas.
+3. **Patrocínios** → processe registos pendentes para converter doações em stock.
+4. **Eventos** → crie eventos e registe saídas de material com notas obrigatórias.
+5. **Caixas** → crie e mantenha as caixas físicas onde o material é guardado.
+
+**Dica prática:** comece sempre no **Dashboard** para validar o estado atual antes de registar movimentos.
+        """
+    )
+
 aba_dashboard, aba_inventario, aba_patrocinios, aba_eventos, aba_caixas = st.tabs(
-    ["Dashboard", "Inventário", "Patrocínios", "Eventos", "Caixas"]
+    [
+        "📊 Dashboard (Visão geral)",
+        "📦 Inventário (Stock)",
+        "🤝 Patrocínios (Pendentes)",
+        "📅 Eventos (Saídas)",
+        "🗃️ Caixas (Armazenamento)",
+    ]
 )
 
 with aba_dashboard:
