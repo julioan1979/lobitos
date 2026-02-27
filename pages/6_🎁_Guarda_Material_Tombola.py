@@ -143,6 +143,14 @@ def _table_df(nome_tabela: str) -> pd.DataFrame:
     return pd.DataFrame([{"id": r["id"], **r.get("fields", {})} for r in registos])
 
 
+def _caixa_display_label(registo: dict) -> str:
+    codigo = str(registo.get("CodigoCaixa") or "").strip()
+    descricao = str(registo.get("Descricao") or "").strip()
+    if descricao and codigo:
+        return f"{descricao} ({codigo})"
+    return descricao or codigo or "Sem identificação"
+
+
 def _safe_int(valor) -> int:
     try:
         return int(valor)
@@ -386,6 +394,11 @@ aba_dashboard, aba_inventario, aba_patrocinios, aba_eventos, aba_caixas = st.tab
 with aba_dashboard:
     df_inv = _table_df(_table_ref("INVENTARIO"))
     df_caixas = _table_df(_table_ref("CAIXAS"))
+    caixa_label = {
+        str(row.get("id") or "").strip(): _caixa_display_label(row)
+        for _, row in df_caixas.iterrows()
+        if str(row.get("id") or "").strip()
+    } if not df_caixas.empty else {}
     total_itens = len(df_inv.index)
     stock_total = pd.to_numeric(df_inv.get("QuantidadeAtual"), errors="coerce").fillna(0).sum() if not df_inv.empty else 0
     baixo_stock = 0
@@ -410,14 +423,27 @@ with aba_dashboard:
                 st.warning(f"Inconsistência: existem {invalidas} itens com quantidade inválida.")
 
         vis = [c for c in ["NomeItem", "Categoria", "QuantidadeAtual", "Estado", "CaixaAtual"] if c in df_inv.columns]
-        st.dataframe(df_inv[vis], use_container_width=True, hide_index=True)
+        df_vis = df_inv[vis].copy()
+        if "CaixaAtual" in df_vis.columns:
+            def _formatar_caixa(v: object) -> str:
+                if isinstance(v, list) and v:
+                    caixa_id = str(v[0]).strip()
+                    return caixa_label.get(caixa_id, caixa_id)
+                return "Sem caixa"
+
+            df_vis["CaixaAtual"] = df_vis["CaixaAtual"].apply(_formatar_caixa)
+        st.dataframe(df_vis, use_container_width=True, hide_index=True)
     st.caption(f"Caixas registadas: {len(df_caixas.index)}")
 
 with aba_inventario:
     df_inv = _table_df(_table_ref("INVENTARIO"))
     df_caixas = _table_df(_table_ref("CAIXAS"))
     caixa_options = df_caixas["id"].tolist() if not df_caixas.empty and "id" in df_caixas.columns else []
-    caixa_label = dict(zip(df_caixas.get("id", []), df_caixas.get("CodigoCaixa", []))) if not df_caixas.empty else {}
+    caixa_label = {
+        str(row.get("id") or "").strip(): _caixa_display_label(row)
+        for _, row in df_caixas.iterrows()
+        if str(row.get("id") or "").strip()
+    } if not df_caixas.empty else {}
 
     st.subheader("Adicionar item")
     with st.form("form_add_item_tombola"):
