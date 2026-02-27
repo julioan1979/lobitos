@@ -363,6 +363,137 @@ with aba_inventario:
                 except Exception as exc:
                     st.error(str(exc))
 
+        st.subheader("Registo em lote")
+        st.caption(
+            "Permite registar múltiplos movimentos de stock de uma só vez. "
+            "Linhas vazias são ignoradas automaticamente."
+        )
+
+        lote_inicial = pd.DataFrame(
+            [
+                {
+                    "NomeItem": "",
+                    "ItemId": "",
+                    "Tipo": "Entrada",
+                    "Quantidade": 1,
+                    "Notas": "",
+                    "CaixaDestino": "",
+                }
+            ]
+        )
+        lote_editor = st.data_editor(
+            lote_inicial,
+            num_rows="dynamic",
+            hide_index=True,
+            use_container_width=True,
+            key="inv_registo_lote_editor",
+            column_config={
+                "NomeItem": st.column_config.TextColumn("NomeItem"),
+                "ItemId": st.column_config.TextColumn("ItemId"),
+                "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Entrada", "Saída", "Ajuste"]),
+                "Quantidade": st.column_config.NumberColumn("Quantidade", min_value=1, step=1),
+                "Notas": st.column_config.TextColumn("Notas"),
+                "CaixaDestino": st.column_config.TextColumn("CaixaDestino"),
+            },
+        )
+
+        if st.button("Processar lote", key="btn_processar_lote"):
+            processadas = 0
+            falhadas = 0
+            ignoradas = 0
+
+            item_ids_set = set(item_ids)
+            nome_para_id = {
+                normalizar_nome_item(str(nome)): iid
+                for iid, nome in zip(df_inv["id"], df_inv.get("NomeItem", df_inv["id"]))
+            }
+
+            linhas_validas = []
+            erros_validacao = []
+
+            for idx, row in lote_editor.iterrows():
+                numero_linha = idx + 1
+                nome_item_linha = str(row.get("NomeItem") or "").strip()
+                item_id_linha = str(row.get("ItemId") or "").strip()
+                tipo_linha = str(row.get("Tipo") or "").strip()
+                quantidade_linha = row.get("Quantidade")
+                notas_linha = str(row.get("Notas") or "").strip()
+                caixa_destino_linha = str(row.get("CaixaDestino") or "").strip()
+
+                linha_vazia = not any(
+                    [nome_item_linha, item_id_linha, tipo_linha, str(quantidade_linha or "").strip(), notas_linha, caixa_destino_linha]
+                )
+                if linha_vazia:
+                    ignoradas += 1
+                    continue
+
+                item_id_resolvido = item_id_linha if item_id_linha else nome_para_id.get(normalizar_nome_item(nome_item_linha))
+                if not item_id_resolvido or item_id_resolvido not in item_ids_set:
+                    erros_validacao.append(
+                        f"Linha {numero_linha}: indique NomeItem ou ItemId válido existente no inventário."
+                    )
+                    continue
+
+                if tipo_linha not in {"Entrada", "Saída", "Ajuste"}:
+                    erros_validacao.append(f"Linha {numero_linha}: Tipo inválido.")
+                    continue
+
+                try:
+                    quantidade_int = int(quantidade_linha)
+                except (TypeError, ValueError):
+                    erros_validacao.append(f"Linha {numero_linha}: Quantidade inválida.")
+                    continue
+
+                if quantidade_int <= 0:
+                    erros_validacao.append(f"Linha {numero_linha}: Quantidade deve ser maior que zero.")
+                    continue
+
+                if tipo_linha in {"Saída", "Ajuste"} and not notas_linha:
+                    erros_validacao.append(f"Linha {numero_linha}: Notas são obrigatórias para {tipo_linha}.")
+                    continue
+
+                linhas_validas.append(
+                    {
+                        "item_id": item_id_resolvido,
+                        "tipo": tipo_linha,
+                        "quantidade": quantidade_int,
+                        "notas": notas_linha,
+                    }
+                )
+
+            if erros_validacao:
+                falhadas += len(erros_validacao)
+                st.error("Foram encontradas linhas inválidas. Corrija antes de gravar.")
+                for erro in erros_validacao:
+                    st.warning(erro)
+
+            for linha in linhas_validas:
+                delta = linha["quantidade"]
+                if linha["tipo"] == "Saída":
+                    delta = -delta
+                try:
+                    ajustar_stock_item(
+                        api,
+                        BASE_ID,
+                        item_id=linha["item_id"],
+                        delta=delta,
+                        executado_por=executado_por,
+                        tipo_movimento=linha["tipo"],
+                        notas=linha["notas"],
+                    )
+                    processadas += 1
+                except Exception as exc:
+                    falhadas += 1
+                    st.warning(f"Falha ao processar item {linha['item_id']}: {exc}")
+
+            st.info(
+                "Resumo do lote — "
+                f"processadas: {processadas}, falhadas: {falhadas}, ignoradas: {ignoradas}."
+            )
+            if processadas > 0:
+                st.success("Lote processado. O inventário será atualizado.")
+                st.rerun()
+
         st.subheader("Transferir item de caixa")
         col_t1, col_t2, col_t3 = st.columns([2, 2, 1])
         item_transfer = col_t1.selectbox("Item para transferir", options=item_ids, format_func=lambda v: item_label.get(v, v), key="inv_item_transfer")
