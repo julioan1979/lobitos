@@ -25,8 +25,6 @@ from airtable_config import (
 )
 from components.banner_convites import mostrar_convites
 
-import locale
-
 try:
     locale.setlocale(locale.LC_ALL, "pt_PT.UTF-8")
 except locale.Error:
@@ -658,9 +656,7 @@ def dashboard_pais():
 
     saldo = pd.to_numeric(escuteiro_row.get("Conta Corrente"), errors="coerce")
     valor_lanches = pd.to_numeric(escuteiro_row.get("Lanches"), errors="coerce")
-    recebimentos = pd.to_numeric(escuteiro_row.get("Valores recebidos"), errors="coerce")
     doacoes = pd.to_numeric(escuteiro_row.get("Valores doados"), errors="coerce")
-    estornos = pd.to_numeric(escuteiro_row.get("Valor Estornado"), errors="coerce")
     n_lanches = pd.to_numeric(escuteiro_row.get("Numero de Lanches"), errors="coerce")
 
     st.subheader("💰 Situação financeira")
@@ -702,8 +698,6 @@ def dashboard_pais():
     estornado_quota_anual = _to_float(escuteiro_row.get("Vls Estornados Quotas Anual"))
 
     net_lanches = recebido_lanches - estornado_lanches
-
-    net_recebimentos = recebimentos - estornos
 
     col_lanches_row = st.columns([1, 1, 1, 1])
     with col_lanches_row[0]:
@@ -822,7 +816,6 @@ def dashboard_pais():
     if not metricas_pedidos.empty and "__data" in metricas_pedidos.columns:
         ult30 = metricas_pedidos[metricas_pedidos["__data"] >= hoje - pd.Timedelta(days=30)]
         total_30 = len(ult30)
-        total_all = len(metricas_pedidos)
         ultimo_registo = metricas_pedidos.iloc[0]["__data"]
         bebidas_freq = None
         if "Bebida" in metricas_pedidos.columns:
@@ -837,7 +830,6 @@ def dashboard_pais():
                 bebidas_freq = recipes_map.get(bebidas_freq, bebidas_freq)
     else:
         total_30 = 0
-        total_all = len(pedidos_escuteiro)
         ultimo_registo = None
         bebidas_freq = None
 

@@ -3,7 +3,6 @@ import math
 from datetime import date, datetime, timedelta
 
 import altair as alt
-import numpy as np
 import pandas as pd
 import streamlit as st
 from pyairtable import Api
@@ -331,7 +330,6 @@ def main():
         cotas["Quota Anual"] = pd.to_numeric(cotas.get("Quota Anual"), errors="coerce").fillna(0)
         cotas["Conta Corrente"] = pd.to_numeric(cotas.get("Conta Corrente"), errors="coerce").fillna(0)
 
-        quota_prevista_mes = cotas["Quota Mensal"].sum()
         quota_prevista_ano = cotas["Quota Anual"].sum()
         contas_negativas = cotas[cotas["Conta Corrente"] < 0]["Conta Corrente"]
         divida_total = -contas_negativas.sum()
