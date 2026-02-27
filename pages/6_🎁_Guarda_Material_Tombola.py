@@ -22,6 +22,10 @@ if secao_info:
     st.caption(secao_info)
 
 role = st.session_state.get("role")
+if role == "pais":
+    st.error("Esta área não está disponível para perfis de Pais.")
+    st.stop()
+
 if role not in {"admin", "tesoureiro"}:
     st.error("Esta área está disponível apenas para Admin e Tesoureiro.")
     st.stop()
@@ -122,7 +126,7 @@ def _processar_patrocinio(registo: dict, inventario_registos: list[dict]) -> Non
 
 st.title("🎁 Guarda Material - Tômbola")
 aba_dashboard, aba_inventario, aba_patrocinios, aba_eventos, aba_caixas = st.tabs(
-    ["📊 Dashboard", "📦 Inventário", "🤝 Patrocínios", "🎪 Eventos", "🗃️ Caixas"]
+    ["Dashboard", "Inventário", "Patrocínios", "Eventos", "Caixas"]
 )
 
 with aba_dashboard:
