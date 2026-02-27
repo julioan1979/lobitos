@@ -229,6 +229,7 @@ def _processar_patrocinio(registo: dict) -> None:
 
 
 st.title("🎁 Guarda Material - Tômbola")
+_auto_bootstrap_schema()
 aba_dashboard, aba_inventario, aba_patrocinios, aba_eventos, aba_caixas = st.tabs(
     ["Dashboard", "Inventário", "Patrocínios", "Eventos", "Caixas"]
 )
