@@ -558,3 +558,97 @@ def encontrar_item_por_nome(registos_inventario: Iterable[Dict[str, Any]], nome_
         if nome == alvo:
             return registo
     return None
+
+
+def processar_movimentos_lote(
+    api: Api,
+    base_id: str,
+    *,
+    movimentos: Iterable[Dict[str, Any]],
+    executado_por: str,
+) -> Dict[str, Any]:
+    """Processa movimentos de inventário em lote e devolve um relatório por linha."""
+    tabela_inventario = api.table(base_id, _tombola_table("INVENTARIO", "Inventario"))
+    registos_inventario = tabela_inventario.all()
+
+    resultados: list[Dict[str, Any]] = []
+    processados = 0
+    erros = 0
+
+    for movimento in movimentos:
+        indice = movimento.get("indice")
+        nome_item = str(movimento.get("nome_item") or "").strip()
+        tipo = str(movimento.get("tipo") or "").strip()
+        notas = str(movimento.get("notas") or "").strip()
+        categoria = str(movimento.get("categoria") or "").strip()
+        evento_id = movimento.get("evento_id")
+
+        try:
+            quantidade = _to_int_positivo(movimento.get("quantidade"))
+            if tipo not in {"Entrada", "Saída", "Ajuste"}:
+                raise ValueError("Tipo inválido. Use Entrada, Saída ou Ajuste.")
+
+            item_registo = encontrar_item_por_nome(registos_inventario, nome_item)
+            item_id = item_registo.get("id") if item_registo else None
+
+            if not item_id:
+                if tipo != "Entrada":
+                    raise ValueError("Item não encontrado no inventário para este tipo de movimento.")
+
+                payload_item = {
+                    "NomeItem": nome_item,
+                    "QuantidadeAtual": 0,
+                    "Estado": "Disponível",
+                    "Ativo": True,
+                }
+                if categoria:
+                    payload_item["Categoria"] = categoria
+                novo_item = tabela_inventario.create(payload_item)
+                item_id = novo_item["id"]
+                registos_inventario.append(novo_item)
+
+            delta = quantidade
+            if tipo == "Saída":
+                delta = -quantidade
+
+            ajustar_stock_item(
+                api,
+                base_id,
+                item_id=item_id,
+                delta=delta,
+                executado_por=executado_por,
+                tipo_movimento=tipo,
+                evento_id=evento_id,
+                notas=notas,
+                origem_entrada="Importação lote" if tipo == "Entrada" else None,
+            )
+            processados += 1
+            resultados.append(
+                {
+                    "Linha": indice,
+                    "NomeItem": nome_item,
+                    "Tipo": tipo,
+                    "Quantidade": quantidade,
+                    "Estado": "OK",
+                    "Mensagem": "Processado com sucesso.",
+                }
+            )
+        except Exception as exc:
+            erros += 1
+            resultados.append(
+                {
+                    "Linha": indice,
+                    "NomeItem": nome_item,
+                    "Tipo": tipo,
+                    "Quantidade": movimento.get("quantidade"),
+                    "Estado": "Erro",
+                    "Mensagem": str(exc),
+                }
+            )
+
+    return {
+        "total": processados + erros,
+        "processados": processados,
+        "erros": erros,
+        "resultados": resultados,
+    }

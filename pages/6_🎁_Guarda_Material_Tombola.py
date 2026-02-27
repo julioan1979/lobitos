@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+
 import pandas as pd
 import streamlit as st
 from pyairtable import Api
@@ -12,6 +14,7 @@ from tombola_utils import (
     criar_movimento,
     encontrar_item_por_nome,
     normalizar_nome_item,
+    processar_movimentos_lote,
     registrar_entrada,
     transferir_item_caixa,
 )
@@ -145,6 +148,126 @@ def _safe_int(valor) -> int:
         return int(valor)
     except (TypeError, ValueError):
         return 0
+
+
+COLUNAS_LOTE_OBRIGATORIAS = ["NomeItem", "Tipo", "Quantidade", "Notas", "Categoria"]
+COLUNAS_LOTE_OPCIONAIS = ["Evento"]
+COLUNAS_LOTE = COLUNAS_LOTE_OBRIGATORIAS + COLUNAS_LOTE_OPCIONAIS
+
+
+def _template_lote_bytes() -> bytes:
+    df_template = pd.DataFrame(
+        [
+            {
+                "NomeItem": "Exemplo Brinquedo",
+                "Tipo": "Entrada",
+                "Quantidade": 10,
+                "Notas": "Doação inicial",
+                "Categoria": "Brindes",
+                "Evento": "",
+            }
+        ]
+    )
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df_template.to_excel(writer, index=False, sheet_name="Lote")
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def _ler_arquivo_lote(uploaded_file) -> pd.DataFrame:
+    nome = (uploaded_file.name or "").lower()
+    if nome.endswith(".csv"):
+        return pd.read_csv(uploaded_file)
+    if nome.endswith(".xlsx") or nome.endswith(".xls"):
+        return pd.read_excel(uploaded_file)
+    raise ValueError("Formato inválido. Use CSV, XLSX ou XLS.")
+
+
+def _validar_e_preparar_lote(df_lote: pd.DataFrame, inventario_registos: list[dict], evento_por_nome: dict[str, str]) -> tuple[pd.DataFrame, list[dict]]:
+    colunas_em_falta = [col for col in COLUNAS_LOTE_OBRIGATORIAS if col not in df_lote.columns]
+    if colunas_em_falta:
+        raise ValueError(f"Colunas obrigatórias em falta: {', '.join(colunas_em_falta)}")
+
+    lote = df_lote.copy()
+    for coluna in COLUNAS_LOTE:
+        if coluna not in lote.columns:
+            lote[coluna] = ""
+
+    preview_rows: list[dict] = []
+    movimentos: list[dict] = []
+    tipos_validos = {"Entrada", "Saída", "Ajuste"}
+
+    for index, row in lote.iterrows():
+        numero_linha = int(index) + 2
+        nome_item = str(row.get("NomeItem") or "").strip()
+        tipo = str(row.get("Tipo") or "").strip()
+        notas = str(row.get("Notas") or "").strip()
+        categoria = str(row.get("Categoria") or "").strip()
+        evento_nome = str(row.get("Evento") or "").strip()
+        quantidade_raw = row.get("Quantidade")
+
+        erros: list[str] = []
+        quantidade = None
+
+        if not nome_item:
+            erros.append("NomeItem em falta")
+        if tipo not in tipos_validos:
+            erros.append("Tipo inválido (Entrada/Saída/Ajuste)")
+
+        try:
+            quantidade = int(float(quantidade_raw))
+            if quantidade <= 0 or float(quantidade_raw) != float(quantidade):
+                raise ValueError
+        except (TypeError, ValueError):
+            erros.append("Quantidade inválida (inteiro > 0)")
+
+        if tipo in {"Saída", "Ajuste"} and not notas:
+            erros.append("Notas obrigatórias para Saída/Ajuste")
+
+        item_registo = encontrar_item_por_nome(inventario_registos, nome_item)
+        item_id = item_registo.get("id") if item_registo else None
+        nome_normalizado = normalizar_nome_item(nome_item)
+        existe_item = bool(item_id)
+
+        if tipo in {"Saída", "Ajuste"} and not existe_item:
+            erros.append("Item não encontrado no inventário")
+
+        evento_id = None
+        if evento_nome:
+            evento_id = evento_por_nome.get(normalizar_nome_item(evento_nome))
+            if not evento_id:
+                erros.append("Evento não encontrado")
+
+        preview_rows.append(
+            {
+                "Linha": numero_linha,
+                "NomeItem": nome_item,
+                "NomeNormalizado": nome_normalizado,
+                "Tipo": tipo,
+                "Quantidade": quantidade_raw,
+                "Categoria": categoria,
+                "Evento": evento_nome,
+                "ItemExistente": "Sim" if existe_item else "Não",
+                "Estado": "Erro" if erros else "OK",
+                "Erros": " | ".join(erros),
+            }
+        )
+
+        if not erros:
+            movimentos.append(
+                {
+                    "indice": numero_linha,
+                    "nome_item": nome_item,
+                    "tipo": tipo,
+                    "quantidade": quantidade,
+                    "notas": notas,
+                    "categoria": categoria,
+                    "evento_id": evento_id,
+                }
+            )
+
+    return pd.DataFrame(preview_rows), movimentos
 
 
 def _ensure_patrocinador_id(nome: str) -> str | None:
@@ -330,6 +453,76 @@ with aba_inventario:
             )
             st.success("Item criado e movimento de ajuste inicial registado.")
             st.rerun()
+
+    with st.expander("Importar lote (CSV/Excel)", expanded=False):
+        st.caption(
+            "Importe movimentos em lote para Entrada/Saída/Ajuste. "
+            "Colunas obrigatórias: NomeItem, Tipo, Quantidade, Notas, Categoria. "
+            "Evento é opcional."
+        )
+        st.download_button(
+            "Descarregar template Excel",
+            data=_template_lote_bytes(),
+            file_name="template_lote_tombola.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_template_lote_tombola",
+        )
+
+        ficheiro_lote = st.file_uploader(
+            "Ficheiro de lote",
+            type=["csv", "xlsx", "xls"],
+            key="upload_lote_tombola",
+            help="Use o template para garantir a estrutura esperada.",
+        )
+
+        if ficheiro_lote is not None:
+            try:
+                df_lote = _ler_arquivo_lote(ficheiro_lote)
+                registos_inventario = api.table(BASE_ID, _table_ref("INVENTARIO")).all()
+                df_eventos_lote = _table_df(_table_ref("EVENTOS"))
+                evento_por_nome = {}
+                if not df_eventos_lote.empty and "NomeEvento" in df_eventos_lote.columns:
+                    for _, evento_row in df_eventos_lote.iterrows():
+                        nome_evento = str(evento_row.get("NomeEvento") or "").strip()
+                        if nome_evento:
+                            evento_por_nome[normalizar_nome_item(nome_evento)] = evento_row["id"]
+
+                preview_lote, movimentos_lote = _validar_e_preparar_lote(
+                    df_lote,
+                    inventario_registos=registos_inventario,
+                    evento_por_nome=evento_por_nome,
+                )
+
+                st.write("Pré-visualização do lote")
+                st.dataframe(preview_lote, use_container_width=True, hide_index=True)
+
+                total_erros = int((preview_lote["Estado"] == "Erro").sum()) if not preview_lote.empty else 0
+                if total_erros > 0:
+                    st.error(f"Foram encontrados {total_erros} erro(s). Corrija o ficheiro antes de gravar.")
+                elif not movimentos_lote:
+                    st.warning("Nenhuma linha válida para processar.")
+                elif st.button("Processar lote", key="btn_processar_lote"):
+                    relatorio = processar_movimentos_lote(
+                        api,
+                        BASE_ID,
+                        movimentos=movimentos_lote,
+                        executado_por=executado_por,
+                    )
+                    st.success(
+                        "Lote processado. "
+                        f"Total: {relatorio['total']} | Sucesso: {relatorio['processados']} | Erros: {relatorio['erros']}"
+                    )
+                    df_relatorio = pd.DataFrame(relatorio["resultados"])
+                    st.dataframe(df_relatorio, use_container_width=True, hide_index=True)
+                    st.download_button(
+                        "Exportar relatório (CSV)",
+                        data=df_relatorio.to_csv(index=False).encode("utf-8"),
+                        file_name="relatorio_lote_tombola.csv",
+                        mime="text/csv",
+                        key="download_relatorio_lote_tombola",
+                    )
+            except Exception as exc:
+                st.error(f"Erro ao validar ficheiro de lote: {exc}")
 
     if not df_inv.empty:
         item_ids = df_inv["id"].tolist()
