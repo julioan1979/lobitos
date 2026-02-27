@@ -167,6 +167,24 @@ def get_airtable_credentials() -> Tuple[str, str]:
     return ctx.token, ctx.base_id
 
 
+
+
+def get_tombola_credentials() -> Tuple[str, str]:
+    """Obtém credenciais da base transversal da Tômbola para o contexto atual."""
+    ctx = current_context()
+    if ctx is None:
+        raise RuntimeError("Nenhuma secção Airtable selecionada.")
+
+    token = ctx.extra("TOMBOLA_AIRTABLE_TOKEN") or ctx.token
+    base_id = ctx.extra("TOMBOLA_AIRTABLE_BASE_ID")
+
+    if not base_id:
+        raise RuntimeError(
+            "A configuração 'TOMBOLA_AIRTABLE_BASE_ID' não foi definida para a secção atual."
+        )
+
+    return str(token).strip(), str(base_id).strip()
+
 def context_labels() -> Optional[str]:
     ctx = current_context()
     if ctx is None:

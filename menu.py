@@ -7,6 +7,7 @@ PAGE_PATHS = {
     "voluntariado": "pages/3_👨‍👩‍👧‍👦_Voluntariado.py",
     "escuteiros": "pages/4_👦_Escuteiros.py",
     "estatisticas": "pages/5_Estatisticas.py",
+    "tombola": "pages/6_🎁_Guarda_Material_Tombola.py",
 }
 
 
@@ -38,6 +39,8 @@ def authenticated_menu() -> None:
     st.sidebar.page_link(PAGE_PATHS["escuteiros"], label="🧒 Escuteiros")
     st.sidebar.page_link(PAGE_PATHS["calendario"], label="📅 Calendário")
     st.sidebar.page_link(PAGE_PATHS["voluntariado"], label="🙋 Voluntariado")
+    if role in {"admin", "tesoureiro"}:
+        st.sidebar.page_link(PAGE_PATHS["tombola"], label="🎁 Guarda Material - Tômbola")
 
     st.sidebar.markdown("---")
     if st.sidebar.button("Trocar secção", key="sidebar-change-section"):
