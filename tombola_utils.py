@@ -5,8 +5,14 @@ from typing import Any, Dict, Iterable, Optional
 
 from pyairtable import Api
 
+from airtable_config import get_tombola_table_ref
+
 
 TIPOS_MOVIMENTO = {"Entrada", "Saída", "Ajuste", "Transferência"}
+
+
+def _tombola_table(table_key: str, default_name: str) -> str:
+    return get_tombola_table_ref(table_key, default_name)
 
 
 def _validar_notas_acao_critica(tipo: str, notas: str) -> None:
@@ -90,7 +96,7 @@ def criar_movimento(
     if notas and notas.strip():
         campos["Notas"] = notas.strip()
 
-    return api.table(base_id, "Movimentos").create(campos)
+    return api.table(base_id, _tombola_table("MOVIMENTOS", "Movimentos")).create(campos)
 
 
 def _atualizar_inventario_e_movimento(
@@ -104,7 +110,7 @@ def _atualizar_inventario_e_movimento(
     caixa_anterior: Optional[str] = None,
     caixa_nova: Optional[str] = None,
 ) -> Dict[str, Any]:
-    tabela_inv = api.table(base_id, "Inventario")
+    tabela_inv = api.table(base_id, _tombola_table("INVENTARIO", "Inventario"))
     payload_update: Dict[str, Any] = {"QuantidadeAtual": quantidade_nova}
     if caixa_nova:
         payload_update["CaixaAtual"] = [caixa_nova]
@@ -140,7 +146,7 @@ def registrar_entrada(
     notas: str = "",
 ) -> Dict[str, Any]:
     quantidade = _to_int_positivo(quantidade)
-    tabela_inv = api.table(base_id, "Inventario")
+    tabela_inv = api.table(base_id, _tombola_table("INVENTARIO", "Inventario"))
     item = tabela_inv.get(item_id)
     atual = _to_float(item.get("fields", {}).get("QuantidadeAtual"))
     novo_valor = atual + quantidade
@@ -178,7 +184,7 @@ def registrar_saida(
     notas: str = "",
 ) -> Dict[str, Any]:
     quantidade = _to_int_positivo(quantidade)
-    tabela_inv = api.table(base_id, "Inventario")
+    tabela_inv = api.table(base_id, _tombola_table("INVENTARIO", "Inventario"))
     item = tabela_inv.get(item_id)
     atual = _to_float(item.get("fields", {}).get("QuantidadeAtual"))
     novo_valor = atual - quantidade
@@ -218,7 +224,7 @@ def registrar_ajuste(
     notas: str = "",
 ) -> Dict[str, Any]:
     quantidade = _to_int_positivo(quantidade)
-    tabela_inv = api.table(base_id, "Inventario")
+    tabela_inv = api.table(base_id, _tombola_table("INVENTARIO", "Inventario"))
     item = tabela_inv.get(item_id)
     atual = _to_float(item.get("fields", {}).get("QuantidadeAtual"))
     novo_valor = atual - quantidade if reduzir else atual + quantidade
@@ -256,7 +262,7 @@ def registrar_transferencia(
     notas: str = "",
 ) -> Dict[str, Any]:
     quantidade = _to_int_positivo(quantidade)
-    tabela_inv = api.table(base_id, "Inventario")
+    tabela_inv = api.table(base_id, _tombola_table("INVENTARIO", "Inventario"))
     item = tabela_inv.get(item_id)
     campos_item = item.get("fields", {})
     caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
@@ -304,7 +310,7 @@ def ajustar_stock_item(
     if delta == 0:
         raise ValueError("A alteração de stock não pode ser zero.")
 
-    tabela_inv = api.table(base_id, "Inventario")
+    tabela_inv = api.table(base_id, _tombola_table("INVENTARIO", "Inventario"))
     item = tabela_inv.get(item_id)
     campos_item = item.get("fields", {})
     caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
@@ -368,7 +374,7 @@ def transferir_item_caixa(
     """Stock real vive no Inventário; Movimentos é auditoria de transferências."""
     quantidade = _to_int_positivo(quantidade)
 
-    tabela_inv = api.table(base_id, "Inventario")
+    tabela_inv = api.table(base_id, _tombola_table("INVENTARIO", "Inventario"))
     item = tabela_inv.get(item_id)
     campos_item = item.get("fields", {})
     caixa_origem_id = _first_link_id(campos_item.get("CaixaAtual"))
