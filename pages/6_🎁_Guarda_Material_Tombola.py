@@ -392,6 +392,19 @@ with aba_inventario:
 
 with aba_patrocinios:
     df_pat = _table_df(_table_ref("REGISTO_PATROCINIOS"))
+    relatorio_batch = st.session_state.pop("patrocinios_batch_relatorio", None)
+    if relatorio_batch:
+        total_sucesso = sum(1 for item in relatorio_batch if item["Resultado"] == "Sucesso")
+        total_erro = len(relatorio_batch) - total_sucesso
+        if total_erro == 0:
+            st.success(f"Processamento concluído: {total_sucesso} registos com sucesso.")
+        else:
+            st.warning(
+                "Processamento concluído com erros: "
+                f"{total_sucesso} sucesso(s) e {total_erro} erro(s)."
+            )
+        st.dataframe(pd.DataFrame(relatorio_batch), use_container_width=True, hide_index=True)
+
     if df_pat.empty:
         st.info("Sem registos em RegistoPatrocinios.")
     else:
@@ -401,21 +414,52 @@ with aba_patrocinios:
         else:
             st.write("Patrocínios pendentes")
             mostrar_cols = [c for c in ["PatrocinadorNome", "DescricaoItem", "Quantidade", "Estado", "Processado"] if c in pendentes.columns]
-            st.dataframe(pendentes[mostrar_cols], use_container_width=True, hide_index=True)
-            for _, row in pendentes.iterrows():
-                reg_id = row["id"]
-                label = f"Processar {row.get('DescricaoItem', reg_id)}"
-                if st.button(label, key=f"proc_pat_{reg_id}"):
-                    try:
-                        registo = api.table(BASE_ID, _table_ref("REGISTO_PATROCINIOS")).get(reg_id)
-                        if registo.get("fields", {}).get("Processado"):
-                            st.warning("Este patrocínio já tinha sido processado.")
-                        else:
+            tabela_pendentes = pendentes[["id", *mostrar_cols]].copy() if mostrar_cols else pendentes[["id"]].copy()
+            tabela_pendentes.insert(0, "Selecionar", False)
+            tabela_editada = st.data_editor(
+                tabela_pendentes,
+                use_container_width=True,
+                hide_index=True,
+                column_config={"Selecionar": st.column_config.CheckboxColumn("Selecionar")},
+                disabled=[c for c in tabela_pendentes.columns if c != "Selecionar"],
+                key="patrocinios_pendentes_editor",
+            )
+
+            if st.button("Processar selecionados", key="proc_pat_lote"):
+                selecionados = tabela_editada[tabela_editada["Selecionar"] == True]
+                if selecionados.empty:
+                    st.warning("Selecione pelo menos um registo para processar.")
+                else:
+                    relatorio = []
+                    tabela_patrocinios = api.table(BASE_ID, _table_ref("REGISTO_PATROCINIOS"))
+                    for _, row in selecionados.iterrows():
+                        reg_id = row["id"]
+                        descricao = row.get("DescricaoItem") or reg_id
+                        try:
+                            registo = tabela_patrocinios.get(reg_id)
+                            if registo.get("fields", {}).get("Processado"):
+                                raise ValueError("Este patrocínio já tinha sido processado.")
                             _processar_patrocinio(registo)
-                            st.success("Patrocínio processado com sucesso.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Erro ao processar patrocínio: {exc}")
+                            relatorio.append(
+                                {
+                                    "Registo": reg_id,
+                                    "DescricaoItem": descricao,
+                                    "Resultado": "Sucesso",
+                                    "Mensagem": "Patrocínio processado com sucesso.",
+                                }
+                            )
+                        except Exception as exc:
+                            relatorio.append(
+                                {
+                                    "Registo": reg_id,
+                                    "DescricaoItem": descricao,
+                                    "Resultado": "Erro",
+                                    "Mensagem": str(exc),
+                                }
+                            )
+
+                    st.session_state["patrocinios_batch_relatorio"] = relatorio
+                    st.rerun()
 
 with aba_eventos:
     st.subheader("Criar evento")
