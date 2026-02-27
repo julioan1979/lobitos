@@ -25,6 +25,40 @@ Se algum campo estiver em falta para a secção selecionada, a aplicação infor
 
 A função `context_extra("NOME", fallback)` devolve qualquer URL configurado (ou o fallback indicado).
 
+### Configuração da Tômbola (base transversal)
+A página **Guarda Material - Tômbola** usa uma base Airtable própria e exige, em cada bloco da secção, as chaves:
+
+```toml
+TOMBOLA_AIRTABLE_TOKEN = "..."
+TOMBOLA_AIRTABLE_BASE_ID = "..."
+```
+
+> Nota: atualmente o `TOMBOLA_AIRTABLE_TOKEN` **não é opcional** no código.
+
+### Schema esperado (Tômbola)
+O código da Tômbola assume as seguintes tabelas e campos na base Airtable:
+
+- `Inventario`
+  - `NomeItem`, `QuantidadeAtual`, `Estado`, `Ativo`
+  - opcionais usados em fluxos: `Categoria`, `CaixaAtual` (link para `Caixas`)
+- `Movimentos`
+  - `Tipo` (`Entrada`, `Saída`, `Ajuste`, `Transferência`), `Item`, `Quantidade`, `ExecutadoPor`
+  - opcionais: `CaixaOrigem`, `CaixaDestino`, `Evento`, `OrigemEntrada`, `Patrocinador`, `Notas`
+- `Caixas`
+  - `CodigoCaixa`, `Descricao`, `Local`, `Estado`
+- `Eventos`
+  - `NomeEvento`, `Tipo`, `Data`, `Local`, `Estado`
+- `RegistoPatrocinios`
+  - `DescricaoItem`, `Quantidade`, `Processado`
+  - opcionais usados no processamento: `CaixaSugerida`, `Categoria`, `PatrocinadorNome`, `Evento`, `Observacoes`, `Estado`
+- `Patrocinadores`
+  - `Nome`
+
+Regras funcionais importantes implementadas no código:
+- Stock real vive em `Inventario`; `Movimentos` é trilho de auditoria.
+- Em `Saída`, `Ajuste` e `Transferência`, `Notas` são obrigatórias.
+- Operações que deixem stock negativo são bloqueadas.
+
 ### Fluxo de utilização
 1. Ao entrar, o utilizador escolhe a secção; a escolha fica em `st.session_state`.
 2. O login valida o utilizador na base Airtable dessa secção.
