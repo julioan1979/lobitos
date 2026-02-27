@@ -81,7 +81,7 @@ def _is_schema_related_error(exc: Exception) -> bool:
     return any(marcador in mensagem for marcador in marcadores)
 
 
-def _auto_bootstrap_schema(trigger: str) -> bool:
+def _auto_bootstrap_schema(trigger: str = "startup") -> bool:
     """Auto-corrige schema só quando detetado erro de schema/modelo."""
     chave_execucao = f"tombola_schema_bootstrap_done::{BASE_ID}::{trigger}"
     if st.session_state.get(chave_execucao):
