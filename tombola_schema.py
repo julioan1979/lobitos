@@ -197,6 +197,7 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
     # 2) Garantir campos de links após todas as tabelas existirem
     link_defs = [
         ("INVENTARIO", "CaixaAtual", "CAIXAS"),
+        ("REGISTO_PATROCINIOS", "Patrocinador", "PATROCINADORES"),
         ("REGISTO_PATROCINIOS", "CaixaSugerida", "CAIXAS"),
         ("REGISTO_PATROCINIOS", "Evento", "EVENTOS"),
         ("MOVIMENTOS", "Item", "INVENTARIO"),

@@ -336,7 +336,10 @@ def _processar_patrocinio(registo: dict) -> None:
     caixa_sugerida = campos.get("CaixaSugerida")
     caixa_sugerida_id = caixa_sugerida[0] if isinstance(caixa_sugerida, list) and caixa_sugerida else None
     categoria = campos.get("Categoria")
-    patrocinador_id = _ensure_patrocinador_id(str(campos.get("PatrocinadorNome") or ""))
+    patrocinador = campos.get("Patrocinador")
+    patrocinador_id = patrocinador[0] if isinstance(patrocinador, list) and patrocinador else None
+    if not patrocinador_id:
+        patrocinador_id = _ensure_patrocinador_id(str(campos.get("PatrocinadorNome") or ""))
     evento = campos.get("Evento")
     evento_id = evento[0] if isinstance(evento, list) and evento else None
 
@@ -879,6 +882,94 @@ with aba_patrocinios:
                 st.error(f"Erro ao criar registo de patrocínio: {exc}")
 
     df_patrocinadores = _table_df(_table_ref("PATROCINADORES"))
+    patrocinador_opcoes = {}
+    if not df_patrocinadores.empty and "Nome" in df_patrocinadores.columns:
+        for _, row in df_patrocinadores.iterrows():
+            patrocinador_nome = str(row.get("Nome") or "").strip()
+            patrocinador_id = str(row.get("id") or "").strip()
+            if patrocinador_nome and patrocinador_id:
+                patrocinador_opcoes[patrocinador_nome] = patrocinador_id
+
+    df_caixas_pat = _table_df(_table_ref("CAIXAS"))
+    caixa_options_pat = df_caixas_pat["id"].tolist() if not df_caixas_pat.empty and "id" in df_caixas_pat.columns else []
+    caixa_label_pat = {
+        str(row.get("id") or "").strip(): _caixa_display_label(row)
+        for _, row in df_caixas_pat.iterrows()
+        if str(row.get("id") or "").strip()
+    } if not df_caixas_pat.empty else {}
+
+    df_eventos_pat = _table_df(_table_ref("EVENTOS"))
+    evento_options_pat = df_eventos_pat["id"].tolist() if not df_eventos_pat.empty and "id" in df_eventos_pat.columns else []
+    evento_label_pat = {
+        str(row.get("id") or "").strip(): str(row.get("NomeEvento") or "").strip() or str(row.get("id") or "").strip()
+        for _, row in df_eventos_pat.iterrows()
+        if str(row.get("id") or "").strip()
+    } if not df_eventos_pat.empty else {}
+
+    st.subheader("Criar patrocínio pendente")
+    with st.form("form_add_patrocinio_pendente_tombola"):
+        col_pat1, col_pat2 = st.columns(2)
+        patrocinador_existente = col_pat1.selectbox(
+            "Patrocinador existente (opcional)",
+            options=[""] + sorted(patrocinador_opcoes.keys()),
+            format_func=lambda v: v or "Selecionar...",
+        )
+        patrocinador_nome = col_pat2.text_input("PatrocinadorNome")
+        descricao_item_pat = st.text_input("DescricaoItem")
+        quantidade_pat = st.number_input("Quantidade", min_value=1, step=1, value=1)
+        categoria_pat = st.text_input("Categoria")
+        observacoes_pat = st.text_area("Observacoes")
+        col_pat3, col_pat4 = st.columns(2)
+        caixa_sugerida_pat = col_pat3.selectbox(
+            "CaixaSugerida (opcional)",
+            options=[None] + caixa_options_pat,
+            format_func=lambda v: caixa_label_pat.get(v, "Sem caixa") if v else "Sem caixa",
+        )
+        evento_pat = col_pat4.selectbox(
+            "Evento (opcional)",
+            options=[None] + evento_options_pat,
+            format_func=lambda v: evento_label_pat.get(v, "Sem evento") if v else "Sem evento",
+        )
+        criar_patrocinio_pendente = st.form_submit_button("Criar pendente")
+
+    if criar_patrocinio_pendente:
+        patrocinador_nome_resolvido = (patrocinador_nome or "").strip() or (patrocinador_existente or "").strip()
+        descricao_item_pat = (descricao_item_pat or "").strip()
+        if not patrocinador_nome_resolvido:
+            st.error("PatrocinadorNome é obrigatório.")
+        elif not descricao_item_pat:
+            st.error("DescricaoItem é obrigatório.")
+        else:
+            try:
+                patrocinador_id_resolvido = patrocinador_opcoes.get((patrocinador_existente or "").strip())
+                if not patrocinador_id_resolvido:
+                    patrocinador_id_resolvido = _ensure_patrocinador_id(patrocinador_nome_resolvido)
+                if not patrocinador_id_resolvido:
+                    raise ValueError("Não foi possível resolver o patrocinador.")
+
+                campos_patrocinio = {
+                    "Patrocinador": [patrocinador_id_resolvido],
+                    "PatrocinadorNome": patrocinador_nome_resolvido,
+                    "DescricaoItem": descricao_item_pat,
+                    "Quantidade": int(quantidade_pat),
+                    "Estado": "Pendente",
+                    "Processado": False,
+                }
+                if categoria_pat.strip():
+                    campos_patrocinio["Categoria"] = categoria_pat.strip()
+                if observacoes_pat.strip():
+                    campos_patrocinio["Observacoes"] = observacoes_pat.strip()
+                if caixa_sugerida_pat:
+                    campos_patrocinio["CaixaSugerida"] = [caixa_sugerida_pat]
+                if evento_pat:
+                    campos_patrocinio["Evento"] = [evento_pat]
+
+                api.table(BASE_ID, _table_ref("REGISTO_PATROCINIOS")).create(campos_patrocinio)
+                st.success("Patrocínio pendente criado com sucesso.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Erro ao criar patrocínio pendente: {exc}")
+
     if not df_patrocinadores.empty:
         st.caption("Patrocinadores atuais")
         cols_patrocinadores = [c for c in ["Nome"] if c in df_patrocinadores.columns]
