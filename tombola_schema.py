@@ -32,6 +32,18 @@ def _ensure_field(table, name: str, field_type: str, options: Dict[str, Any] | N
     return True
 
 
+
+
+def _ensure_base_fields(table, fields: List[Dict[str, Any]], table_ref: str, created_fields: List[str], errors: List[str]) -> None:
+    for field in fields:
+        try:
+            created = _ensure_field(table, field["name"], field["type"], field.get("options"))
+            if created:
+                created_fields.append(f"{table_ref}.{field['name']}")
+        except Exception as exc:
+            errors.append(f"{table_ref}.{field['name']}: falha ao criar campo: {exc}")
+
+
 def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) -> Dict[str, List[str]]:
     """Cria o schema mínimo da Tômbola numa base nova mantendo compatibilidade.
 
@@ -115,25 +127,30 @@ def ensure_tombola_schema(api: Api, base_id: str, table_refs: Dict[str, str]) ->
         ],
     }
 
-    # 1) Criar tabelas base (sem links) quando necessário
+    # 1) Criar tabelas base quando necessário e garantir colunas mínimas
     for key, fields in table_defs.items():
         table_ref = table_refs[key]
+
         if table_ref.startswith("tbl") and not _table_exists(base, table_ref):
             errors.append(f"{key}: referência por ID ({table_ref}) não existe na base.")
             continue
 
-        if _table_exists(base, table_ref):
-            continue
-
-        if table_ref.startswith("tbl"):
-            errors.append(f"{key}: não é possível criar tabela quando referência é ID ({table_ref}).")
-            continue
+        if not _table_exists(base, table_ref):
+            if table_ref.startswith("tbl"):
+                errors.append(f"{key}: não é possível criar tabela quando referência é ID ({table_ref}).")
+                continue
+            try:
+                base.create_table(table_ref, fields)
+                created_tables.append(table_ref)
+            except Exception as exc:
+                errors.append(f"{key}: falha ao criar tabela '{table_ref}': {exc}")
+                continue
 
         try:
-            base.create_table(table_ref, fields)
-            created_tables.append(table_ref)
+            table = _get_table(base, table_ref)
+            _ensure_base_fields(table, fields, table_ref, created_fields, errors)
         except Exception as exc:
-            errors.append(f"{key}: falha ao criar tabela '{table_ref}': {exc}")
+            errors.append(f"{key}: falha ao validar campos base da tabela '{table_ref}': {exc}")
 
     # 2) Garantir campos de links após todas as tabelas existirem
     link_defs = [

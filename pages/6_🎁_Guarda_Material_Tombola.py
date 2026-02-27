@@ -65,42 +65,50 @@ def _table_ref(chave: str) -> str:
 
 def _tabelas_em_falta() -> list[str]:
     base = api.base(BASE_ID)
-    disponiveis = {tbl.name for tbl in base.tables()} | {tbl.id for tbl in base.tables()}
+    tabelas = base.tables()
+    disponiveis = {tbl.name for tbl in tabelas} | {tbl.id for tbl in tabelas}
     return [ref for ref in TABLES.values() if ref not in disponiveis]
 
 
-def _render_schema_bootstrap() -> None:
+def _auto_bootstrap_schema() -> None:
+    """Auto-corrige schema da Tômbola em base nova/partial sem ação manual."""
+    chave_execucao = f"tombola_schema_bootstrap_done::{BASE_ID}::{_table_ref('INVENTARIO')}"
+    if st.session_state.get(chave_execucao):
+        return
+
+    st.session_state[chave_execucao] = True
+
+    try:
+        resultado = ensure_tombola_schema(api, BASE_ID, TABLES)
+    except Exception as exc:
+        st.warning(f"Não foi possível auto-inicializar o schema da Tômbola: {exc}")
+        return
+
+    total_criados = len(resultado["created_tables"]) + len(resultado["created_fields"])
+    if total_criados > 0:
+        st.info(
+            "Schema da Tômbola atualizado automaticamente "
+            f"({len(resultado['created_tables'])} tabelas e {len(resultado['created_fields'])} campos criados)."
+        )
+
+    if resultado["errors"]:
+        st.warning(
+            "Foram detetados problemas ao atualizar o schema automaticamente. "
+            "Valide permissões do token (scope schema.bases:write) e referências TOMBOLA_TABLE_*."
+        )
+        for erro in resultado["errors"]:
+            st.error(erro)
+
     try:
         faltam = _tabelas_em_falta()
-    except Exception as exc:
-        st.warning(f"Não foi possível validar o schema da Tômbola: {exc}")
+    except Exception:
         return
-
-    if not faltam:
-        return
-
-    st.warning(
-        "A base da Tômbola ainda não tem o schema mínimo. "
-        f"Tabelas em falta: {', '.join(faltam)}."
-    )
-
-    with st.expander("Inicializar schema da base Tômbola", expanded=True):
-        st.caption(
-            "Use esta ação apenas em base nova. A operação cria tabelas/campos "
-            "necessários para o módulo sem remover dados existentes."
+    if faltam:
+        st.warning(
+            "A base da Tômbola ainda não tem o schema mínimo completo. "
+            f"Tabelas em falta: {', '.join(faltam)}."
         )
-        if st.button("Criar schema base", type="primary"):
-            resultado = ensure_tombola_schema(api, BASE_ID, TABLES)
-            for nome in resultado["created_tables"]:
-                st.success(f"Tabela criada: {nome}")
-            for campo in resultado["created_fields"]:
-                st.success(f"Campo criado: {campo}")
-            if resultado["errors"]:
-                for erro in resultado["errors"]:
-                    st.error(erro)
-            else:
-                st.success("Schema da Tômbola inicializado com sucesso.")
-            st.rerun()
+
 
 def _table_df(nome_tabela: str) -> pd.DataFrame:
     """Stock real vive no Inventário; Movimentos é auditoria e tabelas suportam contexto."""
@@ -201,7 +209,7 @@ def _processar_patrocinio(registo: dict) -> None:
 
 
 st.title("🎁 Guarda Material - Tômbola")
-_render_schema_bootstrap()
+_auto_bootstrap_schema()
 aba_dashboard, aba_inventario, aba_patrocinios, aba_eventos, aba_caixas = st.tabs(
     ["Dashboard", "Inventário", "Patrocínios", "Eventos", "Caixas"]
 )
