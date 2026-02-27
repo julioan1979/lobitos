@@ -416,11 +416,31 @@ with aba_eventos:
             st.success("Evento criado.")
             st.rerun()
 
-    st.subheader("Registar saída para evento")
     df_eventos = _table_df(_table_ref("EVENTOS"))
+    st.subheader("Eventos registados")
+    if df_eventos.empty:
+        st.info("Ainda não existem eventos registados.")
+    else:
+        cols_eventos = [
+            c for c in ["NomeEvento", "Tipo", "Data", "Local", "Estado"] if c in df_eventos.columns
+        ]
+        st.dataframe(df_eventos[cols_eventos] if cols_eventos else df_eventos, use_container_width=True, hide_index=True)
+
+    st.subheader("Registar saída para evento")
     df_inv = _table_df(_table_ref("INVENTARIO"))
-    if df_eventos.empty or df_inv.empty:
-        st.info("Precisa de pelo menos 1 evento e 1 item para registar saídas.")
+
+    missing_parts = []
+    if df_eventos.empty:
+        missing_parts.append("1 evento")
+    if df_inv.empty:
+        missing_parts.append("1 item")
+
+    if missing_parts:
+        st.info(
+            "Para registar saídas precisa de "
+            + " e ".join(missing_parts)
+            + f". Atualmente: {len(df_eventos.index)} eventos e {len(df_inv.index)} itens."
+        )
     else:
         evento_opts = df_eventos["id"].tolist()
         evento_label = dict(zip(df_eventos["id"], df_eventos.get("NomeEvento", df_eventos["id"])))
