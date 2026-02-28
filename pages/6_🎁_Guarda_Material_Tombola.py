@@ -613,6 +613,7 @@ with aba_inventario:
                 elif not movimentos_lote:
                     st.warning("Nenhuma linha válida para processar.")
                 elif st.button("Processar lote", key="btn_processar_lote_importacao"):
+                    linhas_ignoradas_erro = total_erros if ignorar_linhas_com_erro else 0
                     relatorio = processar_movimentos_lote(
                         api,
                         BASE_ID,
