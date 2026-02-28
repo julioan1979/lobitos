@@ -564,22 +564,42 @@ with aba_inventario:
                 st.dataframe(preview_lote, use_container_width=True, hide_index=True)
 
                 total_erros = int((preview_lote["Estado"] == "Erro").sum()) if not preview_lote.empty else 0
-                if total_erros > 0:
+                total_validas = len(movimentos_lote)
+                ignorar_linhas_com_erro = False
+
+                if total_erros > 0 and total_validas > 0:
+                    st.warning(
+                        "Foram encontradas linhas com erro no ficheiro. "
+                        f"Válidas: {total_validas} | Inválidas: {total_erros}. "
+                        "Por segurança, o processamento continua bloqueado até indicar explicitamente que pretende ignorar as inválidas."
+                    )
+                    ignorar_linhas_com_erro = st.checkbox(
+                        "Ignorar linhas com erro e processar apenas válidas",
+                        value=False,
+                        key="chk_ignorar_linhas_erro_lote_tombola",
+                    )
+
+                if total_erros > 0 and not ignorar_linhas_com_erro:
                     st.error(f"Foram encontrados {total_erros} erro(s). Corrija o ficheiro antes de gravar.")
                 elif not movimentos_lote:
                     st.warning("Nenhuma linha válida para processar.")
                 elif st.button("Processar lote", key="btn_processar_lote"):
+                    linhas_ignoradas_erro = total_erros if total_erros > 0 else 0
                     relatorio = processar_movimentos_lote(
                         api,
                         BASE_ID,
                         movimentos=movimentos_lote,
                         executado_por=executado_por,
                     )
+                    relatorio["linhas_ignoradas_erro"] = linhas_ignoradas_erro
                     st.success(
                         "Lote processado. "
-                        f"Total: {relatorio['total']} | Sucesso: {relatorio['processados']} | Erros: {relatorio['erros']}"
+                        f"Total: {relatorio['total']} | Sucesso: {relatorio['processados']} | "
+                        f"Erros: {relatorio['erros']} | Ignoradas por erro: {relatorio['linhas_ignoradas_erro']}"
                     )
                     df_relatorio = pd.DataFrame(relatorio["resultados"])
+                    if not df_relatorio.empty:
+                        df_relatorio["LinhasIgnoradasErro"] = relatorio["linhas_ignoradas_erro"]
                     st.dataframe(df_relatorio, use_container_width=True, hide_index=True)
                     st.download_button(
                         "Exportar relatório (CSV)",
