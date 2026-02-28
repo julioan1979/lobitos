@@ -568,7 +568,7 @@ with aba_inventario:
                     st.error(f"Foram encontrados {total_erros} erro(s). Corrija o ficheiro antes de gravar.")
                 elif not movimentos_lote:
                     st.warning("Nenhuma linha válida para processar.")
-                elif st.button("Processar lote", key="btn_processar_lote"):
+                elif st.button("Processar lote", key="btn_processar_lote_importacao"):
                     relatorio = processar_movimentos_lote(
                         api,
                         BASE_ID,
@@ -657,7 +657,7 @@ with aba_inventario:
             },
         )
 
-        if st.button("Processar lote", key="btn_processar_lote"):
+        if st.button("Processar lote", key="btn_processar_lote_manual"):
             processadas = 0
             falhadas = 0
             ignoradas = 0
