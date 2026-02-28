@@ -29,6 +29,13 @@ def _hide_streamlit_sidebar_nav() -> None:
 
 def authenticated_menu() -> None:
     role = st.session_state.get("role")
+    permissions = st.session_state.get("permissions", {})
+    has_tombola_access = (
+        role in {"admin", "tesoureiro"}
+        or bool(permissions.get("admin"))
+        or bool(permissions.get("tesoureiro"))
+        or bool(permissions.get("ccp"))
+    )
     _hide_streamlit_sidebar_nav()
 
     st.sidebar.header("Navegação")
@@ -40,7 +47,7 @@ def authenticated_menu() -> None:
     st.sidebar.page_link(PAGE_PATHS["escuteiros"], label="🧒 Escuteiros")
     st.sidebar.page_link(PAGE_PATHS["calendario"], label="📅 Calendário")
     st.sidebar.page_link(PAGE_PATHS["voluntariado"], label="🙋 Voluntariado")
-    if role in {"admin", "tesoureiro"}:
+    if has_tombola_access:
         st.sidebar.page_link(PAGE_PATHS["guarda_material_tombola"], label="🎁 Guarda Material - Tômbola")
 
     st.sidebar.markdown("---")

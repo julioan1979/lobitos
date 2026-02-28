@@ -37,11 +37,12 @@ def _campo_com_conteudo(valor: Any) -> bool:
     return False
 
 
-def _extrair_permissoes(registos: List[Dict[str, Any]]) -> Tuple[bool, bool]:
+def _extrair_permissoes(registos: List[Dict[str, Any]]) -> Tuple[bool, bool, bool]:
     campos = [r.get("fields", {}) for r in registos]
     is_admin = any(_checkbox_marcado(campos_esc.get("Admin")) for campos_esc in campos)
     is_tesoureiro = any(_checkbox_marcado(campos_esc.get("Tesoureiro")) for campos_esc in campos)
-    return is_admin, is_tesoureiro
+    is_ccp = any(_checkbox_marcado(campos_esc.get("CCP")) for campos_esc in campos)
+    return is_admin, is_tesoureiro, is_ccp
 
 
 def _checkbox_marcado(valor: Any) -> bool:
@@ -153,10 +154,10 @@ if st.button("Entrar no portal \U0001F680"):
                     if not correspondencias:
                         st.error("Senha incorreta.")
                     else:
-                        is_admin, is_tesoureiro = _extrair_permissoes(correspondencias)
+                        is_admin, is_tesoureiro, is_ccp = _extrair_permissoes(correspondencias)
                         role = "admin" if is_admin else "tesoureiro" if is_tesoureiro else "pais"
 
-                        if is_admin or is_tesoureiro:
+                        if is_admin or is_tesoureiro or is_ccp:
                             escuteiros_ids = [registo["id"] for registo in registos]
                             nomes_escuteiros = [
                                 registo.get("fields", {}).get("Nome do Escuteiro")
@@ -180,13 +181,14 @@ if st.button("Entrar no portal \U0001F680"):
                         st.session_state["permissions"] = {
                             "admin": is_admin,
                             "tesoureiro": is_tesoureiro,
+                            "ccp": is_ccp,
                         }
                         st.session_state["logged_in"] = True
                         st.session_state["user"] = {
                             "email": email_normalizado,
                             "escuteiros_ids": escuteiros_ids,
                             "nomes": nomes_escuteiros,
-                            "all_access": is_admin or is_tesoureiro,
+                            "all_access": is_admin or is_tesoureiro or is_ccp,
                         }
 
                         st.success(f"✨ Login como {role.capitalize()}!")

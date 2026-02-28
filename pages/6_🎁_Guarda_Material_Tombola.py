@@ -28,12 +28,16 @@ if secao_info:
     st.caption(secao_info)
 
 role = st.session_state.get("role")
-if role == "pais":
-    st.error("Esta área não está disponível para perfis de Pais.")
-    st.stop()
+permissions = st.session_state.get("permissions", {})
+has_tombola_access = (
+    role in {"admin", "tesoureiro"}
+    or bool(permissions.get("admin"))
+    or bool(permissions.get("tesoureiro"))
+    or bool(permissions.get("ccp"))
+)
 
-if role not in {"admin", "tesoureiro"}:
-    st.error("Esta área está disponível apenas para Admin e Tesoureiro.")
+if not has_tombola_access:
+    st.error("Esta área está disponível apenas para Admin, Tesoureiro e CCP.")
     st.stop()
 
 try:
