@@ -584,6 +584,8 @@ with aba_inventario:
                 total_erros = int((preview_lote["Estado"] == "Erro").sum()) if not preview_lote.empty else 0
                 total_validas = len(movimentos_lote)
                 ignorar_linhas_com_erro = False
+                linhas_ignoradas_erro = 0
+                processadas_lote = None
 
                 if total_erros > 0 and total_validas > 0:
                     st.warning(
@@ -597,6 +599,15 @@ with aba_inventario:
                         key="chk_ignorar_linhas_erro_lote_tombola",
                     )
 
+                if ignorar_linhas_com_erro:
+                    linhas_ignoradas_erro = total_erros
+
+                col_metric_validas, col_metric_invalidas, col_metric_ignoradas, col_metric_processadas = st.columns(4)
+                col_metric_validas.metric("Válidas", total_validas)
+                col_metric_invalidas.metric("Inválidas", total_erros)
+                col_metric_ignoradas.metric("Ignoradas", "—")
+                col_metric_processadas.metric("Processadas", "—")
+
                 if total_erros > 0 and not ignorar_linhas_com_erro:
                     st.error(f"Foram encontrados {total_erros} erro(s). Corrija o ficheiro antes de gravar.")
                 elif not movimentos_lote:
@@ -609,6 +620,9 @@ with aba_inventario:
                         executado_por=executado_por,
                     )
                     relatorio["linhas_ignoradas_erro"] = linhas_ignoradas_erro
+                    processadas_lote = relatorio["processados"]
+                    col_metric_ignoradas.metric("Ignoradas", linhas_ignoradas_erro)
+                    col_metric_processadas.metric("Processadas", processadas_lote)
                     st.success(
                         "Lote processado. "
                         f"Total: {relatorio['total']} | Sucesso: {relatorio['processados']} | "
