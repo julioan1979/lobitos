@@ -263,8 +263,14 @@ def _validar_e_preparar_lote(df_lote: pd.DataFrame, inventario_registos: list[di
         nome_normalizado = normalizar_nome_item(nome_item)
         existe_item = bool(item_id)
 
+        sugestao_erro_item = ""
         if tipo in {"Saída", "Ajuste"} and not existe_item:
-            erros.append("Item não encontrado no inventário")
+            mensagem_item_inexistente = (
+                "Item não encontrado no inventário. "
+                "Para novo item, use Entrada antes de Saída/Ajuste."
+            )
+            erros.append(mensagem_item_inexistente)
+            sugestao_erro_item = "Registe primeiro uma Entrada para criar o item no inventário."
 
         evento_id = None
         if evento_nome:
@@ -272,20 +278,21 @@ def _validar_e_preparar_lote(df_lote: pd.DataFrame, inventario_registos: list[di
             if not evento_id:
                 erros.append("Evento não encontrado")
 
-        preview_rows.append(
-            {
-                "Linha": numero_linha,
-                "NomeItem": nome_item,
-                "NomeNormalizado": nome_normalizado,
-                "Tipo": tipo,
-                "Quantidade": quantidade_raw,
-                "Categoria": categoria,
-                "Evento": evento_nome,
-                "ItemExistente": "Sim" if existe_item else "Não",
-                "Estado": "Erro" if erros else "OK",
-                "Erros": " | ".join(erros),
-            }
-        )
+        preview_row = {
+            "Linha": numero_linha,
+            "NomeItem": nome_item,
+            "NomeNormalizado": nome_normalizado,
+            "Tipo": tipo,
+            "Quantidade": quantidade_raw,
+            "Categoria": categoria,
+            "Evento": evento_nome,
+            "ItemExistente": "Sim" if existe_item else "Não",
+            "Estado": "Erro" if erros else "OK",
+            "Erros": " | ".join(erros),
+        }
+        if sugestao_erro_item:
+            preview_row["Sugestão"] = sugestao_erro_item
+        preview_rows.append(preview_row)
 
         if not erros:
             movimentos.append(
@@ -300,7 +307,11 @@ def _validar_e_preparar_lote(df_lote: pd.DataFrame, inventario_registos: list[di
                 }
             )
 
-    return pd.DataFrame(preview_rows), movimentos
+    preview_df = pd.DataFrame(preview_rows)
+    if "Sugestão" in preview_df.columns:
+        preview_df["Sugestão"] = preview_df["Sugestão"].fillna("")
+
+    return preview_df, movimentos
 
 
 def _ensure_patrocinador_id(nome: str) -> str | None:
