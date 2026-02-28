@@ -584,6 +584,7 @@ with aba_inventario:
                 total_erros = int((preview_lote["Estado"] == "Erro").sum()) if not preview_lote.empty else 0
                 total_validas = len(movimentos_lote)
                 ignorar_linhas_com_erro = False
+                linhas_ignoradas_erro = 0
 
                 if total_erros > 0 and total_validas > 0:
                     st.warning(
@@ -602,6 +603,7 @@ with aba_inventario:
                 elif not movimentos_lote:
                     st.warning("Nenhuma linha válida para processar.")
                 elif st.button("Processar lote", key="btn_processar_lote_importacao"):
+                    linhas_ignoradas_erro = total_erros if ignorar_linhas_com_erro else 0
                     relatorio = processar_movimentos_lote(
                         api,
                         BASE_ID,
@@ -609,11 +611,18 @@ with aba_inventario:
                         executado_por=executado_por,
                     )
                     relatorio["linhas_ignoradas_erro"] = linhas_ignoradas_erro
-                    st.success(
-                        "Lote processado. "
-                        f"Total: {relatorio['total']} | Sucesso: {relatorio['processados']} | "
-                        f"Erros: {relatorio['erros']} | Ignoradas por erro: {relatorio['linhas_ignoradas_erro']}"
-                    )
+                    if relatorio["erros"] == 0:
+                        st.success(
+                            "✅ Importação concluída com sucesso. "
+                            f"Linhas processadas: {relatorio['processados']}"
+                            f"{f' | Linhas inválidas ignoradas: {linhas_ignoradas_erro}' if linhas_ignoradas_erro else ''}."
+                        )
+                    else:
+                        st.warning(
+                            "⚠️ Importação concluída com erros. "
+                            f"Total processado: {relatorio['total']} | Sucesso: {relatorio['processados']} | "
+                            f"Erros: {relatorio['erros']} | Ignoradas por erro: {relatorio['linhas_ignoradas_erro']}"
+                        )
                     df_relatorio = pd.DataFrame(relatorio["resultados"])
                     if not df_relatorio.empty:
                         df_relatorio["LinhasIgnoradasErro"] = relatorio["linhas_ignoradas_erro"]
