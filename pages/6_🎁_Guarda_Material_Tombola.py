@@ -554,13 +554,31 @@ with aba_inventario:
                         if nome_evento:
                             evento_por_nome[normalizar_nome_item(nome_evento)] = evento_row["id"]
 
-                preview_lote, movimentos_lote = _validar_e_preparar_lote(
+                st.write("Editar lote antes da validação")
+                df_lote_editado = st.data_editor(
                     df_lote,
+                    num_rows="dynamic",
+                    hide_index=True,
+                    use_container_width=True,
+                    key="editor_import_lote_tombola",
+                    column_config={
+                        "NomeItem": st.column_config.TextColumn("NomeItem"),
+                        "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Entrada", "Saída", "Ajuste"]),
+                        "Quantidade": st.column_config.NumberColumn("Quantidade", min_value=1, step=1),
+                        "Notas": st.column_config.TextColumn("Notas"),
+                        "Categoria": st.column_config.TextColumn("Categoria"),
+                        "Evento": st.column_config.TextColumn("Evento"),
+                    },
+                    disabled=[col for col in df_lote.columns if col not in COLUNAS_LOTE],
+                )
+
+                preview_lote, movimentos_lote = _validar_e_preparar_lote(
+                    df_lote_editado,
                     inventario_registos=registos_inventario,
                     evento_por_nome=evento_por_nome,
                 )
 
-                st.write("Pré-visualização do lote")
+                st.write("Resultado da validação")
                 st.dataframe(preview_lote, use_container_width=True, hide_index=True)
 
                 total_erros = int((preview_lote["Estado"] == "Erro").sum()) if not preview_lote.empty else 0
