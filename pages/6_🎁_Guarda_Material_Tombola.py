@@ -554,17 +554,50 @@ with aba_inventario:
                         if nome_evento:
                             evento_por_nome[normalizar_nome_item(nome_evento)] = evento_row["id"]
 
-                preview_lote, movimentos_lote = _validar_e_preparar_lote(
+                st.write("Editar lote antes da validação")
+                df_lote_editado = st.data_editor(
                     df_lote,
+                    num_rows="dynamic",
+                    hide_index=True,
+                    use_container_width=True,
+                    key="editor_import_lote_tombola",
+                    column_config={
+                        "NomeItem": st.column_config.TextColumn("NomeItem"),
+                        "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Entrada", "Saída", "Ajuste"]),
+                        "Quantidade": st.column_config.NumberColumn("Quantidade", min_value=1, step=1),
+                        "Notas": st.column_config.TextColumn("Notas"),
+                        "Categoria": st.column_config.TextColumn("Categoria"),
+                        "Evento": st.column_config.TextColumn("Evento"),
+                    },
+                    disabled=[col for col in df_lote.columns if col not in COLUNAS_LOTE],
+                )
+
+                preview_lote, movimentos_lote = _validar_e_preparar_lote(
+                    df_lote_editado,
                     inventario_registos=registos_inventario,
                     evento_por_nome=evento_por_nome,
                 )
 
-                st.write("Pré-visualização do lote")
+                st.write("Resultado da validação")
                 st.dataframe(preview_lote, use_container_width=True, hide_index=True)
 
                 total_erros = int((preview_lote["Estado"] == "Erro").sum()) if not preview_lote.empty else 0
-                if total_erros > 0:
+                total_validas = len(movimentos_lote)
+                ignorar_linhas_com_erro = False
+
+                if total_erros > 0 and total_validas > 0:
+                    st.warning(
+                        "Foram encontradas linhas com erro no ficheiro. "
+                        f"Válidas: {total_validas} | Inválidas: {total_erros}. "
+                        "Por segurança, o processamento continua bloqueado até indicar explicitamente que pretende ignorar as inválidas."
+                    )
+                    ignorar_linhas_com_erro = st.checkbox(
+                        "Ignorar linhas com erro e processar apenas válidas",
+                        value=False,
+                        key="chk_ignorar_linhas_erro_lote_tombola",
+                    )
+
+                if total_erros > 0 and not ignorar_linhas_com_erro:
                     st.error(f"Foram encontrados {total_erros} erro(s). Corrija o ficheiro antes de gravar.")
                 elif not movimentos_lote:
                     st.warning("Nenhuma linha válida para processar.")
@@ -575,11 +608,15 @@ with aba_inventario:
                         movimentos=movimentos_lote,
                         executado_por=executado_por,
                     )
+                    relatorio["linhas_ignoradas_erro"] = linhas_ignoradas_erro
                     st.success(
                         "Lote processado. "
-                        f"Total: {relatorio['total']} | Sucesso: {relatorio['processados']} | Erros: {relatorio['erros']}"
+                        f"Total: {relatorio['total']} | Sucesso: {relatorio['processados']} | "
+                        f"Erros: {relatorio['erros']} | Ignoradas por erro: {relatorio['linhas_ignoradas_erro']}"
                     )
                     df_relatorio = pd.DataFrame(relatorio["resultados"])
+                    if not df_relatorio.empty:
+                        df_relatorio["LinhasIgnoradasErro"] = relatorio["linhas_ignoradas_erro"]
                     st.dataframe(df_relatorio, use_container_width=True, hide_index=True)
                     st.download_button(
                         "Exportar relatório (CSV)",
