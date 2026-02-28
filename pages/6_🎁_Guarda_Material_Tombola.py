@@ -158,8 +158,8 @@ def _safe_int(valor) -> int:
         return 0
 
 
-COLUNAS_LOTE_OBRIGATORIAS = ["NomeItem", "Tipo", "Quantidade", "Notas", "Categoria"]
-COLUNAS_LOTE_OPCIONAIS = ["Evento"]
+COLUNAS_LOTE_OBRIGATORIAS = ["NomeItem", "Tipo", "Quantidade"]
+COLUNAS_LOTE_OPCIONAIS = ["Notas", "Categoria", "Evento"]
 COLUNAS_LOTE = COLUNAS_LOTE_OBRIGATORIAS + COLUNAS_LOTE_OPCIONAIS
 
 
@@ -511,8 +511,9 @@ with aba_inventario:
     with st.expander("Importar lote (CSV/Excel)", expanded=False):
         st.caption(
             "Importe movimentos em lote para Entrada/Saída/Ajuste. "
-            "Colunas obrigatórias: NomeItem, Tipo, Quantidade, Notas, Categoria. "
-            "Evento é opcional."
+            "Colunas obrigatórias no ficheiro: NomeItem, Tipo, Quantidade. "
+            "Colunas opcionais: Notas, Categoria, Evento. "
+            "Notas continua obrigatória por linha para movimentos do tipo Saída/Ajuste."
         )
         template_data, template_nome, template_mime, template_label = _template_lote_download_config()
         st.download_button(
