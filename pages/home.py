@@ -259,7 +259,7 @@ def construir_mapa_nomes_por_id(dataset: dict) -> dict[str, str]:
             if serie.empty:
                 continue
 
-            serie = serie.apply(lambda v: ", ".join(v) if isinstance(v, list) else v)
+            serie = serie.apply(lambda v: ", ".join(str(x) for x in v) if isinstance(v, list) else v)
             algum_mapeado = False
             for idx, valor in serie.items():
                 if not isinstance(valor, str):
