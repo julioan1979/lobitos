@@ -70,8 +70,8 @@ else:
     df_valid = df.copy()
 
     cancel_col = _first_existing(df_valid, ["Cancelado"])
-    if cancel_col:
-        df_valid = df_valid[~df_valid[cancel_col].fillna(False)]
+    if cancel_col and cancel_col in df_valid.columns:
+        df_valid = df_valid.loc[~df_valid[cancel_col].fillna(False)]
 
     if "Created" in df_valid.columns:
         df_valid = df_valid.sort_values("Created", ascending=False)
