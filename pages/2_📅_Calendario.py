@@ -66,7 +66,18 @@ else:
         )
         cancel_col = _first_existing(df_vol, ["Cancelado"])
         if cancel_col:
-            df_vol = df_vol[~df_vol[cancel_col].fillna(False)]
+            # A coluna pode vir como texto do Airtable, por isso normalizamos para booleano.
+            serie_cancel = df_vol[cancel_col]
+            if pd.api.types.is_bool_dtype(serie_cancel):
+                mask_cancel = serie_cancel.fillna(False)
+            else:
+                truthy = {"true", "sim", "1", "yes", "y"}
+                mask_cancel = (
+                    serie_cancel.fillna(False)
+                    .apply(lambda valor: str(valor).strip().lower() in truthy)
+                )
+            mask_cancel = mask_cancel.astype(bool)
+            df_vol = df_vol.loc[~mask_cancel].copy()
         if col_link:
             for _, row in df_vol.iterrows():
                 evento_ids = row.get(col_link)
